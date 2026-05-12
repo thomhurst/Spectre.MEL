@@ -1,0 +1,13 @@
+workflow: TrunkBased/v1
+mode: ContinuousDeployment
+tag-prefix: '[vV]?'
+branches:
+  main:
+    label: ''
+    increment: Minor
+  feature:
+    label: 'alpha'
+    increment: Inherit
+  pull-request:
+    label: 'pr'
+    increment: Inherit
