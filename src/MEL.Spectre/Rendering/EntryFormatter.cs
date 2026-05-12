@@ -22,12 +22,14 @@ internal sealed class EntryFormatter
     private readonly FrozenDictionary<LogLevel, Style> _levelStyles;
     private readonly string _messageOpenTag;
     private readonly string _messageCloseTag;
+    private readonly bool _allowMarkupInTemplate;
 
-    public EntryFormatter(OutputTemplate template, SpectreTheme theme, SecretMasker masker)
+    public EntryFormatter(OutputTemplate template, SpectreTheme theme, SecretMasker masker, bool allowMarkupInTemplate = false)
     {
         _template = template;
         _theme = theme;
         _masker = masker;
+        _allowMarkupInTemplate = allowMarkupInTemplate;
         _timestampStyle = theme.TimestampStyle;
         _categoryStyle = theme.CategoryStyle;
         _messageStyle = theme.MessageStyle;
@@ -49,7 +51,7 @@ internal sealed class EntryFormatter
         }
     }
 
-    public string Format(LogEntry entry, List<string>? maskValueSink = null)
+    public string Format(LogEntry entry, List<string>? maskValueSink = null, bool suppressLevelSegment = false)
     {
         var builder = new StringBuilder(256);
         foreach (var segment in _template.Segments)
@@ -63,6 +65,10 @@ internal sealed class EntryFormatter
                     MarkupHelper.AppendStyled(builder, FormatTimestamp(entry.Timestamp, segment.Format), _timestampStyle);
                     break;
                 case SegmentKind.Level:
+                    if (suppressLevelSegment)
+                    {
+                        break;
+                    }
                     MarkupHelper.AppendStyled(builder, FormatLevel(entry.Level, segment.Format), LevelStyle(entry.Level));
                     break;
                 case SegmentKind.Category:
@@ -76,7 +82,7 @@ internal sealed class EntryFormatter
                     break;
                 case SegmentKind.Message:
                     builder.Append(_messageOpenTag);
-                    builder.Append(MessageFormatter.Render(entry.OriginalFormat, entry.Message, entry.Placeholders, _theme, _masker, maskValueSink));
+                    builder.Append(MessageFormatter.Render(entry.OriginalFormat, entry.Message, entry.Placeholders, _theme, _masker, maskValueSink, _allowMarkupInTemplate));
                     builder.Append(_messageCloseTag);
                     break;
                 case SegmentKind.NewLine:

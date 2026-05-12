@@ -157,6 +157,86 @@ public class CiRendererTests
     }
 
     [Test]
+    public async Task SuppressInlineLevelOnCiAnnotation_drops_level_tag_for_warning_and_error()
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.GitHubActions, logger =>
+        {
+            logger.LogWarning("watch out");
+            logger.LogError("kaboom");
+            logger.LogInformation("just info");
+        }, o =>
+        {
+            o.SuppressInlineLevelOnCiAnnotation = true;
+            o.Template = "[{Level:u5}] {Message}";
+        });
+
+        await Assert.That(output).Contains("::warning::");
+        await Assert.That(output).Contains("::error::");
+        await Assert.That(output).DoesNotContain("[WARN ]");
+        await Assert.That(output).DoesNotContain("[ERROR]");
+        await Assert.That(output).Contains("[INFO ] just info");
+    }
+
+    [Test]
+    public async Task SuppressInlineLevelOnCiAnnotation_keeps_level_tag_for_info_when_no_ci_annotation()
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.GitHubActions, logger =>
+        {
+            logger.LogInformation("hi");
+        }, o =>
+        {
+            o.SuppressInlineLevelOnCiAnnotation = true;
+            o.Template = "[{Level:u5}] {Message}";
+        });
+
+        await Assert.That(output).Contains("[INFO ] hi");
+    }
+
+    [Test]
+    public async Task SuppressInlineLevelOnCiAnnotation_off_by_default_keeps_level_tag()
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.GitHubActions, logger =>
+        {
+            logger.LogWarning("watch out");
+        }, o => o.Template = "[{Level:u5}] {Message}");
+
+        await Assert.That(output).Contains("::warning::");
+        await Assert.That(output).Contains("[WARN ]");
+    }
+
+    [Test]
+    public async Task AllowMarkupInMessageTemplate_passes_through_markup_tags()
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            logger.LogInformation("[green]OK[/] for {Name}", "auth");
+        }, o =>
+        {
+            o.AllowMarkupInMessageTemplate = true;
+            o.Theme = MEL.Spectre.Theme.SpectreTheme.Default;
+            o.Template = "{Message}";
+        });
+
+        await Assert.That(output).Contains("OK");
+        await Assert.That(output).DoesNotContain("[green]");
+        await Assert.That(output).DoesNotContain("[/]");
+    }
+
+    [Test]
+    public async Task AllowMarkupInMessageTemplate_off_escapes_markup_tags()
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            logger.LogInformation("[green]OK[/] for {Name}", "auth");
+        }, o =>
+        {
+            o.Template = "{Message}";
+        });
+
+        await Assert.That(output).Contains("[green]OK[/]");
+    }
+
+    [Test]
     public async Task GitHubActions_emits_add_mask_only_once_per_value()
     {
         var output = await LogTestHarness.CaptureAsync(CiMode.GitHubActions, logger =>

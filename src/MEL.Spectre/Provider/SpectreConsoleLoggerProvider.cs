@@ -31,8 +31,8 @@ internal sealed class SpectreConsoleLoggerProvider : ILoggerProvider, ISupportEx
         var template = new OutputTemplate(_options.Template);
         var masker = new SecretMasker(_options.MaskedNamePatterns, _options.MaskedValueCacheCapacity);
         _options.Theme.Freeze();
-        var formatter = new EntryFormatter(template, _options.Theme, masker);
-        var context = new RendererContext(formatter, masker, _options.ExceptionFormats);
+        var formatter = new EntryFormatter(template, _options.Theme, masker, _options.AllowMarkupInMessageTemplate);
+        var context = new RendererContext(formatter, masker, _options.ExceptionFormats, _options.SuppressInlineLevelOnCiAnnotation);
         var renderer = ResolveRenderer(ciMode, context);
 
         _writer = new BackgroundWriter(

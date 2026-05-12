@@ -8,11 +8,11 @@ namespace MEL.Spectre.Rendering;
 
 internal static class MessageFormatter
 {
-    public static string Render(string? originalFormat, string fallback, Placeholder[] placeholders, SpectreTheme theme, SecretMasker masker, List<string>? collectMaskValues = null)
+    public static string Render(string? originalFormat, string fallback, Placeholder[] placeholders, SpectreTheme theme, SecretMasker masker, List<string>? collectMaskValues = null, bool allowMarkupInTemplate = false)
     {
         if (string.IsNullOrEmpty(originalFormat))
         {
-            return Markup.Escape(fallback);
+            return allowMarkupInTemplate ? fallback : Markup.Escape(fallback);
         }
 
         var builder = new StringBuilder(originalFormat.Length + 32);
@@ -86,7 +86,14 @@ internal static class MessageFormatter
 
             if (c == '[' || c == ']')
             {
-                builder.Append(c).Append(c);
+                if (!allowMarkupInTemplate)
+                {
+                    builder.Append(c).Append(c);
+                }
+                else
+                {
+                    builder.Append(c);
+                }
                 i++;
                 continue;
             }
