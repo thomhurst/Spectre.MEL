@@ -79,6 +79,24 @@ internal sealed class SpectreConsoleLoggerOptionsValidator : IValidateOptions<Sp
             }
         }
 
+        for (var i = 0; i < options.MaskedValuePatterns.Count; i++)
+        {
+            var pattern = options.MaskedValuePatterns[i];
+            if (pattern is null)
+            {
+                failures.Add($"{nameof(options.MaskedValuePatterns)}[{i}] must not be null.");
+                continue;
+            }
+            try
+            {
+                _ = new Regex(pattern, RegexOptions.IgnoreCase);
+            }
+            catch (Exception ex) when (!FatalExceptions.IsFatal(ex))
+            {
+                failures.Add($"{nameof(options.MaskedValuePatterns)}[{i}] is not a valid regex: {ex.Message}");
+            }
+        }
+
         return failures.Count == 0
             ? ValidateOptionsResult.Success
             : ValidateOptionsResult.Fail(failures);

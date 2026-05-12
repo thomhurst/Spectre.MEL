@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
 using Microsoft.Extensions.Options;
+using Spectre.Console;
 using MEL.Spectre.Provider;
 
 namespace MEL.Spectre;
@@ -30,6 +31,8 @@ public static class SpectreConsoleLoggingBuilderExtensions
             }
         }
 
+        builder.Services.TryAddSingleton<IAnsiConsole>(sp =>
+            AnsiConsoleFactory.Build(sp.GetRequiredService<IOptions<SpectreConsoleLoggerOptions>>().Value));
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<ILoggerProvider, SpectreConsoleLoggerProvider>());
 
         return builder;

@@ -20,18 +20,18 @@ internal sealed class SpectreConsoleLoggerProvider : ILoggerProvider, ISupportEx
     private volatile IExternalScopeProvider? _scopeProvider;
     private int _disposed;
 
-    public SpectreConsoleLoggerProvider(IOptions<SpectreConsoleLoggerOptions> options)
+    public SpectreConsoleLoggerProvider(IOptions<SpectreConsoleLoggerOptions> options, IAnsiConsole console)
     {
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(console);
         _options = options.Value;
         ArgumentNullException.ThrowIfNull(_options.Theme, $"{nameof(SpectreConsoleLoggerOptions)}.{nameof(SpectreConsoleLoggerOptions.Theme)}");
 
         var ciMode = _options.CiMode == CiMode.Auto ? CiDetector.DetectFromEnvironment() : _options.CiMode;
-        var console = _options.Console ?? BuildAnsiConsole(_options, ciMode);
         var template = new OutputTemplate(_options.Template);
-        var masker = new SecretMasker(_options.MaskedNamePatterns, _options.MaskedValueCacheCapacity);
+        var masker = new SecretMasker(_options.MaskedNamePatterns, _options.MaskedValuePatterns, _options.MaskedValueCacheCapacity);
         _options.Theme.Freeze();
-        var formatter = new EntryFormatter(template, _options.Theme, masker, _options.AllowMarkupInMessageTemplate);
+        var formatter = new EntryFormatter(template, _options.Theme, masker, _options.AllowMarkupInMessageTemplate, _options.MinimumInlineLevel);
         var context = new RendererContext(formatter, masker, _options.ExceptionFormats, _options.SuppressInlineLevelOnCiAnnotation);
         var renderer = ResolveRenderer(ciMode, context);
 
@@ -83,33 +83,6 @@ internal sealed class SpectreConsoleLoggerProvider : ILoggerProvider, ISupportEx
             return;
         }
         await _writer.DisposeAsync().ConfigureAwait(false);
-    }
-
-    private static IAnsiConsole BuildAnsiConsole(SpectreConsoleLoggerOptions options, CiMode ciMode)
-    {
-        var isInteractive = options.InteractivityMode switch
-        {
-            InteractivityMode.Interactive => true,
-            InteractivityMode.NonInteractive => false,
-            _ => TtyDetector.IsInteractiveTty(),
-        };
-
-        var inCi = ciMode != CiMode.Off;
-
-        var settings = new AnsiConsoleSettings
-        {
-            Out = new AnsiConsoleOutput(System.Console.Out),
-            Interactive = isInteractive ? InteractionSupport.Yes : InteractionSupport.No,
-            Ansi = (isInteractive || inCi) ? AnsiSupport.Yes : AnsiSupport.No,
-            ColorSystem = ColorSystemSupport.Detect,
-        };
-
-        var console = AnsiConsole.Create(settings);
-        if (!isInteractive)
-        {
-            console.Profile.Width = 1_000_000;
-        }
-        return console;
     }
 
     private static ICiRenderer ResolveRenderer(CiMode mode, RendererContext context) => mode switch
