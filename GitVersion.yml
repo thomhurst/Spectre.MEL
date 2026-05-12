@@ -1,4 +1,4 @@
-workflow: TrunkBased/v1
+workflow: TrunkBased/preview1
 mode: ContinuousDeployment
 tag-prefix: '[vV]?'
 branches:
