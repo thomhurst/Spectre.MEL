@@ -52,9 +52,9 @@ public sealed class PlaceholderStyleResolver
         }
 
         var nameStyle = _nameCache.GetOrAdd(name, ResolveByName);
-        if (nameStyle is not null)
+        if (nameStyle.HasValue)
         {
-            return nameStyle;
+            return nameStyle.Value;
         }
 
         var type = value.GetType();

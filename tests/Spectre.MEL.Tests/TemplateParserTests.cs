@@ -10,7 +10,7 @@ public class TemplateParserTests
     public async Task Parses_literal_only_template()
     {
         var segments = TemplateParser.Parse("hello world");
-        await Assert.That(segments).HasCount(1);
+        await Assert.That(segments).Count().IsEqualTo(1);
         await Assert.That(segments[0].Kind).IsEqualTo(SegmentKind.Literal);
         await Assert.That(segments[0].Literal).IsEqualTo("hello world");
     }
@@ -40,7 +40,7 @@ public class TemplateParserTests
     public async Task Escapes_double_braces()
     {
         var segments = TemplateParser.Parse("{{not a token}}");
-        await Assert.That(segments).HasCount(1);
+        await Assert.That(segments).Count().IsEqualTo(1);
         await Assert.That(segments[0].Literal).IsEqualTo("{not a token}");
     }
 

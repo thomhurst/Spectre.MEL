@@ -32,7 +32,7 @@ jobs:
         run: dotnet build --configuration Release --no-restore
 
       - name: Test
-        run: dotnet run --project tests/Spectre.MEL.Tests/Spectre.MEL.Tests.csproj --configuration Release --no-build -- --treenode-filter "/**"
+        run: dotnet run --project tests/Spectre.MEL.Tests/Spectre.MEL.Tests.csproj --configuration Release --no-build -- --treenode-filter "/**" --report-trx
 
       - name: Pack
         if: matrix.os == 'ubuntu-latest'

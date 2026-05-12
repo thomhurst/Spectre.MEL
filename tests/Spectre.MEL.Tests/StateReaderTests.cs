@@ -19,7 +19,7 @@ public class StateReaderTests
         var (originalFormat, placeholders) = StateReader.Extract(state);
 
         await Assert.That(originalFormat).IsEqualTo("User {UserId} email {Email}");
-        await Assert.That(placeholders).HasCount(2);
+        await Assert.That(placeholders).Count().IsEqualTo(2);
         await Assert.That(placeholders[0].Name).IsEqualTo("UserId");
         await Assert.That(placeholders[0].Value).IsEqualTo(42);
         await Assert.That(placeholders[1].Name).IsEqualTo("Email");
