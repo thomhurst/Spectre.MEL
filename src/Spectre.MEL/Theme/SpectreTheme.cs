@@ -6,6 +6,15 @@ namespace Spectre.MEL.Theme;
 public sealed class SpectreTheme
 {
     private readonly Dictionary<LogLevel, Style> _levels;
+    private readonly Lock _mutationLock = new();
+    private bool _frozen;
+    private Style _timestampStyle = new(Color.Grey50);
+    private Style _categoryStyle = new(Color.Grey70);
+    private Style _messageStyle = new(Color.Default);
+    private Style _exceptionStyle = new(Color.Red);
+    private Style _scopeStyle = new(Color.Grey, decoration: Decoration.Italic);
+    private Style _eventIdStyle = new(Color.Grey50, decoration: Decoration.Dim);
+    private PlaceholderStyleResolver _placeholders = BuildDefaultPlaceholders();
 
     public SpectreTheme()
     {
@@ -20,20 +29,57 @@ public sealed class SpectreTheme
         };
     }
 
-    public Style TimestampStyle { get; set; } = new(Color.Grey50);
-    public Style CategoryStyle { get; set; } = new(Color.Grey70);
-    public Style MessageStyle { get; set; } = new(Color.Default);
-    public Style ExceptionStyle { get; set; } = new(Color.Red);
-    public Style ScopeStyle { get; set; } = new(Color.Grey, decoration: Decoration.Italic);
-    public Style EventIdStyle { get; set; } = new(Color.Grey50, decoration: Decoration.Dim);
+    public Style TimestampStyle
+    {
+        get => _timestampStyle;
+        set => Set(ref _timestampStyle, value);
+    }
 
-    public PlaceholderStyleResolver Placeholders { get; private set; } = BuildDefaultPlaceholders();
+    public Style CategoryStyle
+    {
+        get => _categoryStyle;
+        set => Set(ref _categoryStyle, value);
+    }
+
+    public Style MessageStyle
+    {
+        get => _messageStyle;
+        set => Set(ref _messageStyle, value);
+    }
+
+    public Style ExceptionStyle
+    {
+        get => _exceptionStyle;
+        set => Set(ref _exceptionStyle, value);
+    }
+
+    public Style ScopeStyle
+    {
+        get => _scopeStyle;
+        set => Set(ref _scopeStyle, value);
+    }
+
+    public Style EventIdStyle
+    {
+        get => _eventIdStyle;
+        set => Set(ref _eventIdStyle, value);
+    }
+
+    public PlaceholderStyleResolver Placeholders
+    {
+        get => _placeholders;
+        private set => Set(ref _placeholders, value);
+    }
 
     public Style ForLevel(LogLevel level) => _levels.TryGetValue(level, out var s) ? s : new Style();
 
     public SpectreTheme ForLevel(LogLevel level, Style style)
     {
-        _levels[level] = style;
+        lock (_mutationLock)
+        {
+            EnsureMutable();
+            _levels[level] = style;
+        }
         return this;
     }
 
@@ -41,8 +87,33 @@ public sealed class SpectreTheme
 
     public SpectreTheme WithPlaceholders(Action<PlaceholderStyleResolver> configure)
     {
-        configure(Placeholders);
+        configure(_placeholders);
         return this;
+    }
+
+    internal void Freeze()
+    {
+        lock (_mutationLock)
+        {
+            _frozen = true;
+        }
+    }
+
+    private void Set<T>(ref T field, T value)
+    {
+        lock (_mutationLock)
+        {
+            EnsureMutable();
+            field = value;
+        }
+    }
+
+    private void EnsureMutable()
+    {
+        if (_frozen)
+        {
+            throw new InvalidOperationException("SpectreTheme is frozen after the provider starts. Configure all styles before AddSpectreConsole resolves the provider.");
+        }
     }
 
     public static SpectreTheme Default => new();

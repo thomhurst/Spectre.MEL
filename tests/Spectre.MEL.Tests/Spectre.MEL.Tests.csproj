@@ -4,7 +4,7 @@
     <IsPackable>false</IsPackable>
     <OutputType>Exe</OutputType>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-    <NoWarn>$(NoWarn);CA1707;CA1873;CA2254</NoWarn>
+    <NoWarn>$(NoWarn);CA1707;CA1873;CA2254;TUnit0055;CA1001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

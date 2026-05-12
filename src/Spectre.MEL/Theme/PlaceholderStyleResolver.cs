@@ -10,15 +10,19 @@ public sealed class PlaceholderStyleResolver
     private readonly List<(Regex Pattern, Style Style)> _byNamePattern = new();
     private readonly Dictionary<Type, Style> _byType = new();
     private readonly ConcurrentDictionary<string, Style?> _nameCache = new(StringComparer.Ordinal);
-    private int _frozen;
+    private readonly Lock _mutationLock = new();
+    private bool _frozen;
 
     public Style DefaultStyle { get; set; } = new(Color.Grey85);
     public Style NullStyle { get; set; } = new(Color.Grey50, decoration: Decoration.Dim);
 
     public PlaceholderStyleResolver ForName(string name, Style style)
     {
-        EnsureMutable();
-        _byName[name] = style;
+        lock (_mutationLock)
+        {
+            EnsureMutable();
+            _byName[name] = style;
+        }
         return this;
     }
 
@@ -26,15 +30,21 @@ public sealed class PlaceholderStyleResolver
 
     public PlaceholderStyleResolver ForNamePattern(string regex, Style style)
     {
-        EnsureMutable();
-        _byNamePattern.Add((new Regex(regex, RegexOptions.IgnoreCase | RegexOptions.Compiled), style));
+        lock (_mutationLock)
+        {
+            EnsureMutable();
+            _byNamePattern.Add((new Regex(regex, RegexOptions.IgnoreCase | RegexOptions.Compiled), style));
+        }
         return this;
     }
 
     public PlaceholderStyleResolver ForType<T>(Style style)
     {
-        EnsureMutable();
-        _byType[typeof(T)] = style;
+        lock (_mutationLock)
+        {
+            EnsureMutable();
+            _byType[typeof(T)] = style;
+        }
         return this;
     }
 
@@ -42,14 +52,23 @@ public sealed class PlaceholderStyleResolver
 
     public PlaceholderStyleResolver ForType(Type type, Style style)
     {
-        EnsureMutable();
-        _byType[type] = style;
+        lock (_mutationLock)
+        {
+            EnsureMutable();
+            _byType[type] = style;
+        }
         return this;
     }
 
     public Style Resolve(string name, object? value)
     {
-        Freeze();
+        if (!Volatile.Read(ref _frozen))
+        {
+            lock (_mutationLock)
+            {
+                _frozen = true;
+            }
+        }
 
         if (value is null)
         {
@@ -76,11 +95,9 @@ public sealed class PlaceholderStyleResolver
         return DefaultStyle;
     }
 
-    private void Freeze() => Interlocked.CompareExchange(ref _frozen, 1, 0);
-
     private void EnsureMutable()
     {
-        if (Volatile.Read(ref _frozen) == 1)
+        if (_frozen)
         {
             throw new InvalidOperationException("PlaceholderStyleResolver is frozen after first Resolve. Configure all rules before the provider starts logging.");
         }

@@ -13,7 +13,9 @@ public static class SpectreConsoleLoggingBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        builder.Services.AddOptions<SpectreConsoleLoggerOptions>();
+        builder.Services
+            .AddOptions<SpectreConsoleLoggerOptions>()
+            .ValidateOnStart();
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<SpectreConsoleLoggerOptions>, SpectreConsoleLoggerOptionsValidator>());
         if (configure is not null)
         {

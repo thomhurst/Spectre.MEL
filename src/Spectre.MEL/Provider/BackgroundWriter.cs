@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Threading.Channels;
 using Spectre.Console;
 using Spectre.MEL.Ci;
@@ -17,8 +18,10 @@ internal sealed class BackgroundWriter : IAsyncDisposable
     private readonly Stack<ScopeFrame> _activeScopes = new();
     private long _droppedAfterDispose;
     private long _droppedBackpressure;
-    private int _droppedWarningEmitted;
+    private int _droppedAfterDisposeWarningEmitted;
+    private int _droppedBackpressureWarningEmitted;
     private int _drainTimeoutEmitted;
+    private int _scopesClosed;
 
     public BackgroundWriter(
         IAnsiConsole console,
@@ -71,7 +74,7 @@ internal sealed class BackgroundWriter : IAsyncDisposable
 
         if (_backpressureMode != BackpressureMode.Wait)
         {
-            Interlocked.Increment(ref _droppedBackpressure);
+            RecordBackpressureDrop();
             return;
         }
 
@@ -95,7 +98,7 @@ internal sealed class BackgroundWriter : IAsyncDisposable
 
             if (Environment.TickCount64 >= deadline)
             {
-                Interlocked.Increment(ref _droppedBackpressure);
+                RecordBackpressureDrop();
                 return;
             }
 
@@ -115,7 +118,7 @@ internal sealed class BackgroundWriter : IAsyncDisposable
                 }
                 catch (OperationCanceledException)
                 {
-                    Interlocked.Increment(ref _droppedBackpressure);
+                    RecordBackpressureDrop();
                     return;
                 }
             }
@@ -126,9 +129,18 @@ internal sealed class BackgroundWriter : IAsyncDisposable
     private void RecordDropAfterDispose()
     {
         Interlocked.Increment(ref _droppedAfterDispose);
-        if (Interlocked.Exchange(ref _droppedWarningEmitted, 1) == 0)
+        if (Interlocked.Exchange(ref _droppedAfterDisposeWarningEmitted, 1) == 0)
         {
-            TryWriteStderr("Spectre.MEL: log entry dropped after provider disposal.");
+            EmitDiagnostic("Spectre.MEL: log entry dropped after provider disposal.");
+        }
+    }
+
+    private void RecordBackpressureDrop()
+    {
+        Interlocked.Increment(ref _droppedBackpressure);
+        if (Interlocked.Exchange(ref _droppedBackpressureWarningEmitted, 1) == 0)
+        {
+            EmitDiagnostic($"Spectre.MEL: log entry dropped due to backpressure ({_backpressureMode}); consider raising ChannelCapacity or EnqueueWaitTimeout.");
         }
     }
 
@@ -145,24 +157,38 @@ internal sealed class BackgroundWriter : IAsyncDisposable
                 }
                 catch (Exception ex) when (!IsFatal(ex))
                 {
-                    TryWriteStderr($"Spectre.MEL: render fault: {ex}");
+                    EmitDiagnostic($"Spectre.MEL: render fault: {ex}");
                 }
             }
         }
         catch (Exception ex) when (!IsFatal(ex))
         {
-            TryWriteStderr($"Spectre.MEL: consumer fault: {ex}");
+            EmitDiagnostic($"Spectre.MEL: consumer fault: {ex}");
         }
         finally
         {
-            try
+            TryCloseAllScopes();
+        }
+    }
+
+    private void TryCloseAllScopes()
+    {
+        if (Interlocked.Exchange(ref _scopesClosed, 1) != 0)
+        {
+            return;
+        }
+
+        try
+        {
+            while (_activeScopes.Count > 0)
             {
-                CloseAllScopes();
+                var frame = _activeScopes.Pop();
+                _renderer.CloseScope(_console, frame, _activeScopes.Count);
             }
-            catch (Exception ex) when (!IsFatal(ex))
-            {
-                TryWriteStderr($"Spectre.MEL: scope close fault: {ex}");
-            }
+        }
+        catch (Exception ex) when (!IsFatal(ex))
+        {
+            EmitDiagnostic($"Spectre.MEL: scope close fault: {ex}");
         }
     }
 
@@ -172,14 +198,27 @@ internal sealed class BackgroundWriter : IAsyncDisposable
         or AccessViolationException
         or ThreadAbortException;
 
-    private static void TryWriteStderr(string message)
+    private static void EmitDiagnostic(string message)
     {
+        var written = false;
         try
         {
             System.Console.Error.WriteLine(message);
+            written = true;
         }
         catch
         {
+        }
+
+        if (!written)
+        {
+            try
+            {
+                Debug.WriteLine(message);
+            }
+            catch
+            {
+            }
         }
     }
 
@@ -206,15 +245,6 @@ internal sealed class BackgroundWriter : IAsyncDisposable
         }
     }
 
-    private void CloseAllScopes()
-    {
-        while (_activeScopes.Count > 0)
-        {
-            var frame = _activeScopes.Pop();
-            _renderer.CloseScope(_console, frame, _activeScopes.Count);
-        }
-    }
-
     public async ValueTask DisposeAsync()
     {
         if (!_channel.Writer.TryComplete())
@@ -230,16 +260,9 @@ internal sealed class BackgroundWriter : IAsyncDisposable
         {
             if (Interlocked.Exchange(ref _drainTimeoutEmitted, 1) == 0)
             {
-                TryWriteStderr($"Spectre.MEL: drain timeout after {_drainTimeout}; some log entries may be lost.");
+                EmitDiagnostic($"Spectre.MEL: drain timeout after {_drainTimeout}; some log entries may be lost.");
             }
-            try
-            {
-                CloseAllScopes();
-            }
-            catch (Exception ex) when (!IsFatal(ex))
-            {
-                TryWriteStderr($"Spectre.MEL: scope close fault on drain timeout: {ex}");
-            }
+            TryCloseAllScopes();
         }
     }
 }
