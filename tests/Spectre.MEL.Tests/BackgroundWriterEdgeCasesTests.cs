@@ -37,7 +37,9 @@ public class BackgroundWriterEdgeCasesTests
         await services.DisposeAsync();
 
         await Assert.That(blocking.Output).Contains("entry 49");
-        await Assert.That(blocking.Output).DoesNotContain("entry 0");
+        // entry 0 may slip through: consumer dequeues it before the gate blocks, so backpressure can't drop it.
+        // a mid-range entry is unambiguously inside the dropped window.
+        await Assert.That(blocking.Output).DoesNotContain("entry 25");
     }
 
     [Test]
