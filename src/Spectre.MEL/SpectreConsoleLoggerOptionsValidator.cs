@@ -20,7 +20,7 @@ internal sealed class SpectreConsoleLoggerOptionsValidator : IValidateOptions<Sp
             {
                 _ = new OutputTemplate(options.Template);
             }
-            catch (FormatException ex)
+            catch (Exception ex) when (!FatalExceptions.IsFatal(ex))
             {
                 failures.Add($"{nameof(options.Template)} is not a valid template: {ex.Message}");
             }
@@ -51,6 +51,11 @@ internal sealed class SpectreConsoleLoggerOptionsValidator : IValidateOptions<Sp
             failures.Add($"{nameof(options.EnqueueWaitTimeout)} must not exceed {nameof(options.ShutdownDrainTimeout)}.");
         }
 
+        if (options.BackpressureMode == BackpressureMode.Wait && options.EnqueueWaitTimeout == TimeSpan.Zero)
+        {
+            failures.Add($"{nameof(options.EnqueueWaitTimeout)} must be greater than zero when BackpressureMode is Wait; use DropNewest or DropOldest for non-blocking semantics.");
+        }
+
         if (options.Theme is null)
         {
             failures.Add($"{nameof(options.Theme)} must not be null.");
@@ -58,11 +63,17 @@ internal sealed class SpectreConsoleLoggerOptionsValidator : IValidateOptions<Sp
 
         for (var i = 0; i < options.MaskedNamePatterns.Count; i++)
         {
+            var pattern = options.MaskedNamePatterns[i];
+            if (pattern is null)
+            {
+                failures.Add($"{nameof(options.MaskedNamePatterns)}[{i}] must not be null.");
+                continue;
+            }
             try
             {
-                _ = new Regex(options.MaskedNamePatterns[i], RegexOptions.IgnoreCase);
+                _ = new Regex(pattern, RegexOptions.IgnoreCase);
             }
-            catch (ArgumentException ex)
+            catch (Exception ex) when (!FatalExceptions.IsFatal(ex))
             {
                 failures.Add($"{nameof(options.MaskedNamePatterns)}[{i}] is not a valid regex: {ex.Message}");
             }

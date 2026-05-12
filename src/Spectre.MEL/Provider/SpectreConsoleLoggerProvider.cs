@@ -28,7 +28,6 @@ internal sealed class SpectreConsoleLoggerProvider : ILoggerProvider, ISupportEx
         var console = _options.Console ?? BuildAnsiConsole(_options, ciMode);
         var template = new OutputTemplate(_options.Template);
         var masker = new SecretMasker(_options.MaskedNamePatterns, _options.MaskedValueCacheCapacity);
-        _options.Theme.Freeze();
         var formatter = new EntryFormatter(template, _options.Theme, masker);
         var context = new RendererContext(formatter, masker, _options.ExceptionFormats);
         var renderer = ResolveRenderer(ciMode, context);
@@ -40,6 +39,8 @@ internal sealed class SpectreConsoleLoggerProvider : ILoggerProvider, ISupportEx
             _options.BackpressureMode,
             _options.ShutdownDrainTimeout,
             _options.EnqueueWaitTimeout);
+
+        _options.Theme.Freeze();
     }
 
     public ILogger CreateLogger(string categoryName)
@@ -68,7 +69,7 @@ internal sealed class SpectreConsoleLoggerProvider : ILoggerProvider, ISupportEx
         {
             Task.Run(() => _writer.DisposeAsync().AsTask()).GetAwaiter().GetResult();
         }
-        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+        catch (Exception ex) when (!FatalExceptions.IsFatal(ex))
         {
             try { System.Console.Error.WriteLine($"Spectre.MEL: dispose fault: {ex}"); } catch { }
         }

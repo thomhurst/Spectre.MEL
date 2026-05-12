@@ -1,5 +1,7 @@
+using System.Collections.Frozen;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using Spectre.Console;
 using Spectre.MEL.Masking;
 using Spectre.MEL.Provider;
 using Spectre.MEL.Templates;
@@ -12,12 +14,24 @@ internal sealed class EntryFormatter
     private readonly OutputTemplate _template;
     private readonly SpectreTheme _theme;
     private readonly SecretMasker _masker;
+    private readonly Style _timestampStyle;
+    private readonly Style _categoryStyle;
+    private readonly Style _scopeStyle;
+    private readonly Style _eventIdStyle;
+    private readonly FrozenDictionary<LogLevel, Style> _levelStyles;
 
     public EntryFormatter(OutputTemplate template, SpectreTheme theme, SecretMasker masker)
     {
         _template = template;
         _theme = theme;
         _masker = masker;
+        _timestampStyle = theme.TimestampStyle;
+        _categoryStyle = theme.CategoryStyle;
+        _scopeStyle = theme.ScopeStyle;
+        _eventIdStyle = theme.EventIdStyle;
+        _levelStyles = Enum.GetValues<LogLevel>()
+            .Where(l => l != LogLevel.None)
+            .ToFrozenDictionary(l => l, theme.ForLevel);
     }
 
     public string Format(LogEntry entry, List<string>? maskValueSink = null)
@@ -31,18 +45,18 @@ internal sealed class EntryFormatter
                     builder.Append(MarkupHelper.Escape(segment.Literal ?? string.Empty));
                     break;
                 case SegmentKind.Timestamp:
-                    MarkupHelper.AppendStyled(builder, FormatTimestamp(entry.Timestamp, segment.Format), _theme.TimestampStyle);
+                    MarkupHelper.AppendStyled(builder, FormatTimestamp(entry.Timestamp, segment.Format), _timestampStyle);
                     break;
                 case SegmentKind.Level:
-                    MarkupHelper.AppendStyled(builder, FormatLevel(entry.Level, segment.Format), _theme.ForLevel(entry.Level));
+                    MarkupHelper.AppendStyled(builder, FormatLevel(entry.Level, segment.Format), LevelStyle(entry.Level));
                     break;
                 case SegmentKind.Category:
-                    MarkupHelper.AppendStyled(builder, entry.Category, _theme.CategoryStyle);
+                    MarkupHelper.AppendStyled(builder, entry.Category, _categoryStyle);
                     break;
                 case SegmentKind.EventId:
                     if (entry.EventId.Id != 0 || !string.IsNullOrEmpty(entry.EventId.Name))
                     {
-                        MarkupHelper.AppendStyled(builder, FormatEventId(entry.EventId), _theme.EventIdStyle);
+                        MarkupHelper.AppendStyled(builder, FormatEventId(entry.EventId), _eventIdStyle);
                     }
                     break;
                 case SegmentKind.Message:
@@ -60,19 +74,19 @@ internal sealed class EntryFormatter
                             if (i > 0) scopeLabel.Append(" / ");
                             scopeLabel.Append(entry.Scopes[i].Label);
                         }
-                        MarkupHelper.AppendStyled(builder, scopeLabel.ToString(), _theme.ScopeStyle);
+                        MarkupHelper.AppendStyled(builder, scopeLabel.ToString(), _scopeStyle);
                     }
                     break;
                 case SegmentKind.TraceId:
                     if (!string.IsNullOrEmpty(entry.TraceId))
                     {
-                        MarkupHelper.AppendStyled(builder, entry.TraceId, _theme.EventIdStyle);
+                        MarkupHelper.AppendStyled(builder, entry.TraceId, _eventIdStyle);
                     }
                     break;
                 case SegmentKind.SpanId:
                     if (!string.IsNullOrEmpty(entry.SpanId))
                     {
-                        MarkupHelper.AppendStyled(builder, entry.SpanId, _theme.EventIdStyle);
+                        MarkupHelper.AppendStyled(builder, entry.SpanId, _eventIdStyle);
                     }
                     break;
                 case SegmentKind.Custom:
@@ -88,6 +102,8 @@ internal sealed class EntryFormatter
 
         return builder.ToString();
     }
+
+    private Style LevelStyle(LogLevel level) => _levelStyles.TryGetValue(level, out var s) ? s : new Style();
 
     private static Placeholder? FindCustom(Placeholder[] placeholders, string name)
     {

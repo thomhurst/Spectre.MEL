@@ -71,8 +71,11 @@ builder.AddSpectreConsole(o =>
 
 Built-in themes: `Default`, `Dark`, `Light`, `Monochrome`.
 
-> The `PlaceholderStyleResolver` is **configure-once**: it freezes on first
-> log call. Adding rules after the first log throws `InvalidOperationException`.
+> Both `SpectreTheme` and its `PlaceholderStyleResolver` are **configure-once**:
+> they freeze when the provider is constructed. Mutating styles or adding rules
+> afterwards throws `InvalidOperationException`. Invalid regex patterns, malformed
+> templates, and out-of-range timeouts all fail validation at host startup
+> via `IValidateOptions<SpectreConsoleLoggerOptions>`.
 
 ## CI detection
 
@@ -105,11 +108,13 @@ builder.AddSpectreConsole(o =>
 The background writer uses a bounded `Channel<LogEntry>`. When full:
 
 - `BackpressureMode.Wait` (default) — log call spins, then waits up to
-  `EnqueueWaitTimeout` (default 1 s) before dropping with a counter increment.
+  `EnqueueWaitTimeout` (default 1 s, must be > 0 and ≤ `ShutdownDrainTimeout`)
+  before dropping with a counter increment.
 - `BackpressureMode.DropNewest` — drop the incoming entry.
 - `BackpressureMode.DropOldest` — drop the oldest queued entry.
 
-Drops after provider disposal write a one-shot warning to `stderr`.
+Drops (backpressure or post-disposal) each emit a one-shot warning to
+`stderr`, falling back to `Debug.WriteLine` if `stderr` is unavailable.
 
 ## License
 

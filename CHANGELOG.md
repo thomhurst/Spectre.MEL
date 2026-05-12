@@ -12,8 +12,10 @@
 - Secret masking with `::add-mask::` integration on GitHub Actions.
 - Channel-based background writer with bounded backpressure (`Wait`,
   `DropNewest`, `DropOldest`) and configurable `EnqueueWaitTimeout`.
-- Options validated via `IValidateOptions<SpectreConsoleLoggerOptions>`.
-- `PlaceholderStyleResolver` freezes after first resolve to guarantee
-  thread-safety on the log path.
-- TUnit + Spectre.Console.Testing-based test suite (72 tests).
+- `SpectreTheme` and `PlaceholderStyleResolver` both freeze when the provider
+  is constructed; mutations after that throw `InvalidOperationException`.
+- Options validated via `IValidateOptions<SpectreConsoleLoggerOptions>` with
+  `.ValidateOnStart()`: failures (bad template, invalid regex, out-of-range
+  timeouts, `Wait` mode with zero timeout) surface at host startup.
+- TUnit + Spectre.Console.Testing-based test suite (108 tests).
 - BenchmarkDotNet baseline against `Microsoft.Extensions.Logging.Console`.

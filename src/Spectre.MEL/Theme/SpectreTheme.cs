@@ -87,7 +87,11 @@ public sealed class SpectreTheme
 
     public SpectreTheme WithPlaceholders(Action<PlaceholderStyleResolver> configure)
     {
-        configure(_placeholders);
+        lock (_mutationLock)
+        {
+            EnsureMutable();
+            configure(_placeholders);
+        }
         return this;
     }
 
@@ -97,6 +101,7 @@ public sealed class SpectreTheme
         {
             _frozen = true;
         }
+        _placeholders.Freeze();
     }
 
     private void Set<T>(ref T field, T value)

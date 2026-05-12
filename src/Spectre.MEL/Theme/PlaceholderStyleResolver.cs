@@ -12,9 +12,20 @@ public sealed class PlaceholderStyleResolver
     private readonly ConcurrentDictionary<string, Style?> _nameCache = new(StringComparer.Ordinal);
     private readonly Lock _mutationLock = new();
     private bool _frozen;
+    private Style _defaultStyle = new(Color.Grey85);
+    private Style _nullStyle = new(Color.Grey50, decoration: Decoration.Dim);
 
-    public Style DefaultStyle { get; set; } = new(Color.Grey85);
-    public Style NullStyle { get; set; } = new(Color.Grey50, decoration: Decoration.Dim);
+    public Style DefaultStyle
+    {
+        get => _defaultStyle;
+        set => Set(ref _defaultStyle, value);
+    }
+
+    public Style NullStyle
+    {
+        get => _nullStyle;
+        set => Set(ref _nullStyle, value);
+    }
 
     public PlaceholderStyleResolver ForName(string name, Style style)
     {
@@ -62,17 +73,11 @@ public sealed class PlaceholderStyleResolver
 
     public Style Resolve(string name, object? value)
     {
-        if (!Volatile.Read(ref _frozen))
-        {
-            lock (_mutationLock)
-            {
-                _frozen = true;
-            }
-        }
+        Freeze();
 
         if (value is null)
         {
-            return NullStyle;
+            return _nullStyle;
         }
 
         var nameStyle = _nameCache.GetOrAdd(name, ResolveByName);
@@ -92,14 +97,35 @@ public sealed class PlaceholderStyleResolver
             return enumStyle;
         }
 
-        return DefaultStyle;
+        return _defaultStyle;
+    }
+
+    internal void Freeze()
+    {
+        if (Volatile.Read(ref _frozen))
+        {
+            return;
+        }
+        lock (_mutationLock)
+        {
+            _frozen = true;
+        }
+    }
+
+    private void Set<T>(ref T field, T value)
+    {
+        lock (_mutationLock)
+        {
+            EnsureMutable();
+            field = value;
+        }
     }
 
     private void EnsureMutable()
     {
         if (_frozen)
         {
-            throw new InvalidOperationException("PlaceholderStyleResolver is frozen after first Resolve. Configure all rules before the provider starts logging.");
+            throw new InvalidOperationException("PlaceholderStyleResolver is frozen after the provider starts. Configure all rules before AddSpectreConsole resolves the provider.");
         }
     }
 

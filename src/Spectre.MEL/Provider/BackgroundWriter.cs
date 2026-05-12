@@ -155,13 +155,13 @@ internal sealed class BackgroundWriter : IAsyncDisposable
                     ReconcileScopes(entry.Scopes);
                     _renderer.RenderEntry(_console, entry, _activeScopes.Count);
                 }
-                catch (Exception ex) when (!IsFatal(ex))
+                catch (Exception ex) when (!FatalExceptions.IsFatal(ex))
                 {
                     EmitDiagnostic($"Spectre.MEL: render fault: {ex}");
                 }
             }
         }
-        catch (Exception ex) when (!IsFatal(ex))
+        catch (Exception ex) when (!FatalExceptions.IsFatal(ex))
         {
             EmitDiagnostic($"Spectre.MEL: consumer fault: {ex}");
         }
@@ -186,17 +186,11 @@ internal sealed class BackgroundWriter : IAsyncDisposable
                 _renderer.CloseScope(_console, frame, _activeScopes.Count);
             }
         }
-        catch (Exception ex) when (!IsFatal(ex))
+        catch (Exception ex) when (!FatalExceptions.IsFatal(ex))
         {
             EmitDiagnostic($"Spectre.MEL: scope close fault: {ex}");
         }
     }
-
-    private static bool IsFatal(Exception ex) =>
-        ex is OutOfMemoryException
-        or StackOverflowException
-        or AccessViolationException
-        or ThreadAbortException;
 
     private static void EmitDiagnostic(string message)
     {

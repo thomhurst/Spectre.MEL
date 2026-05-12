@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Spectre.MEL;
 using Spectre.MEL.Theme;
@@ -98,5 +100,61 @@ public class OptionsValidatorTests
         var result = Validator.Validate(null, options);
         await Assert.That(result.Failed).IsTrue();
         await Assert.That(result.FailureMessage).Contains("MaskedNamePatterns");
+    }
+
+    [Test]
+    public async Task MaskedNamePatterns_null_entry_is_rejected()
+    {
+        var options = new SpectreConsoleLoggerOptions();
+        options.MaskedNamePatterns.Add(null!);
+        var result = Validator.Validate(null, options);
+        await Assert.That(result.Failed).IsTrue();
+        await Assert.That(result.FailureMessage).Contains("MaskedNamePatterns");
+    }
+
+    [Test]
+    public async Task Wait_mode_with_zero_EnqueueWaitTimeout_fails()
+    {
+        var result = Validator.Validate(null, new SpectreConsoleLoggerOptions
+        {
+            BackpressureMode = BackpressureMode.Wait,
+            EnqueueWaitTimeout = TimeSpan.Zero,
+        });
+        await Assert.That(result.Failed).IsTrue();
+        await Assert.That(result.FailureMessage).Contains("EnqueueWaitTimeout");
+    }
+
+    [Test]
+    [Arguments(5, 5)]
+    [Arguments(1, 5)]
+    public async Task EnqueueWaitTimeout_equal_or_less_than_drain_passes(int wait, int drain)
+    {
+        var result = Validator.Validate(null, new SpectreConsoleLoggerOptions
+        {
+            EnqueueWaitTimeout = TimeSpan.FromSeconds(wait),
+            ShutdownDrainTimeout = TimeSpan.FromSeconds(drain),
+        });
+        await Assert.That(result.Succeeded).IsTrue();
+    }
+
+    [Test]
+    public async Task Template_with_malformed_token_fails()
+    {
+        var result = Validator.Validate(null, new SpectreConsoleLoggerOptions { Template = "{Level" });
+        await Assert.That(result.Failed).IsTrue();
+        await Assert.That(result.FailureMessage).Contains("Template");
+    }
+
+    [Test]
+    public async Task End_to_end_invalid_options_fail_at_provider_resolution()
+    {
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection()
+            .AddLogging(b => b.AddSpectreConsole(o => o.ChannelCapacity = 0))
+            .BuildServiceProvider();
+
+        await Assert.That(() => services.GetRequiredService<Microsoft.Extensions.Logging.ILoggerFactory>().CreateLogger("X"))
+            .Throws<OptionsValidationException>();
+
+        await services.DisposeAsync();
     }
 }
