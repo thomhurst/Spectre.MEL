@@ -1,4 +1,4 @@
-# Spectre.MEL
+# MEL.Spectre
 
 A `Microsoft.Extensions.Logging` provider that renders log entries through
 [Spectre.Console](https://github.com/spectreconsole/spectre.console) with
@@ -33,7 +33,7 @@ plain ANSI output with no grouping or annotations.
 ## Install
 
 ```sh
-dotnet add package Spectre.MEL
+dotnet add package MEL.Spectre
 ```
 
 ## Usage
@@ -41,7 +41,7 @@ dotnet add package Spectre.MEL
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Spectre.MEL;
+using MEL.Spectre;
 
 var services = new ServiceCollection()
     .AddLogging(builder => builder.AddSpectreConsole());
@@ -59,8 +59,8 @@ not get duplicate output.
 ```csharp
 using Microsoft.Extensions.Logging;
 using Spectre.Console;
-using Spectre.MEL;
-using Spectre.MEL.Theme;
+using MEL.Spectre;
+using MEL.Spectre.Theme;
 
 builder.AddSpectreConsole(o =>
 {
@@ -96,7 +96,7 @@ builder.AddSpectreConsole(o =>
 ## Secret masking
 
 Placeholders whose name matches any of the configured regex patterns are
-rendered as `***`. On GitHub Actions, Spectre.MEL also emits `::add-mask::`
+rendered as `***`. On GitHub Actions, MEL.Spectre also emits `::add-mask::`
 once per distinct value so the unmasked value is redacted from subsequent
 build steps.
 

@@ -32,11 +32,11 @@ jobs:
         run: dotnet build --configuration Release --no-restore
 
       - name: Test
-        run: dotnet run --project tests/Spectre.MEL.Tests/Spectre.MEL.Tests.csproj --configuration Release --no-build -- --treenode-filter "/**" --report-trx
+        run: dotnet run --project tests/MEL.Spectre.Tests/MEL.Spectre.Tests.csproj --configuration Release --no-build -- --treenode-filter "/**" --report-trx
 
       - name: Pack
         if: matrix.os == 'ubuntu-latest'
-        run: dotnet pack src/Spectre.MEL/Spectre.MEL.csproj --configuration Release --no-build --output ./artifacts
+        run: dotnet pack src/MEL.Spectre/MEL.Spectre.csproj --configuration Release --no-build --output ./artifacts
 
       - name: Upload package
         if: matrix.os == 'ubuntu-latest'

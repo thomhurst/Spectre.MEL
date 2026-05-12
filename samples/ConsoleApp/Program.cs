@@ -1,6 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Spectre.MEL;
+using MEL.Spectre;
 
 using var sp = new ServiceCollection()
     .AddLogging(builder => builder
@@ -11,7 +11,7 @@ using var sp = new ServiceCollection()
         }))
     .BuildServiceProvider();
 
-var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger("Spectre.MEL.Sample");
+var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger("MEL.Spectre.Sample");
 
 logger.LogTrace("Boot sequence start");
 logger.LogDebug("Configuration loaded from {Path}", "/etc/app/config.yaml");

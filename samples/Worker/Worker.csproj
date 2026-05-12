@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <RootNamespace>Spectre.MEL.Samples.Worker</RootNamespace>
+    <RootNamespace>MEL.Spectre.Samples.Worker</RootNamespace>
     <IsPackable>false</IsPackable>
     <UserSecretsId>spectre-mel-worker-sample</UserSecretsId>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
@@ -13,6 +13,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../src/Spectre.MEL/Spectre.MEL.csproj" />
+    <ProjectReference Include="../../src/MEL.Spectre/MEL.Spectre.csproj" />
   </ItemGroup>
 </Project>

@@ -14,7 +14,7 @@
     <Company>Tom Longhurst</Company>
     <Copyright>Copyright (c) Tom Longhurst</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <RepositoryUrl>https://github.com/thomhurst/Spectre.MEL</RepositoryUrl>
+    <RepositoryUrl>https://github.com/thomhurst/MEL.Spectre</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>

@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace Spectre.MEL.Samples.Worker;
+namespace MEL.Spectre.Samples.Worker;
 
 internal sealed partial class HeartbeatWorker(ILogger<HeartbeatWorker> logger) : BackgroundService
 {

@@ -45,13 +45,13 @@ jobs:
 
       - name: Test
         run: >-
-          dotnet run --project tests/Spectre.MEL.Tests/Spectre.MEL.Tests.csproj
+          dotnet run --project tests/MEL.Spectre.Tests/MEL.Spectre.Tests.csproj
           --configuration Release --no-build
           -- --treenode-filter "/**"
 
       - name: Pack
         run: >-
-          dotnet pack src/Spectre.MEL/Spectre.MEL.csproj
+          dotnet pack src/MEL.Spectre/MEL.Spectre.csproj
           --configuration Release --no-build
           -p:PackageVersion=${{ steps.gitversion.outputs.semVer }}
           --output ./artifacts
