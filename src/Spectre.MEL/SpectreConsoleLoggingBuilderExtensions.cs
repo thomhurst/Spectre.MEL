@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
+using Microsoft.Extensions.Options;
 using Spectre.MEL.Provider;
 
 namespace Spectre.MEL;
@@ -13,6 +14,7 @@ public static class SpectreConsoleLoggingBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
 
         builder.Services.AddOptions<SpectreConsoleLoggerOptions>();
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<SpectreConsoleLoggerOptions>, SpectreConsoleLoggerOptionsValidator>());
         if (configure is not null)
         {
             builder.Services.Configure(configure);

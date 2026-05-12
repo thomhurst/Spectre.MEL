@@ -1,3 +1,5 @@
+using System.Security;
+
 namespace Spectre.MEL.Rendering;
 
 internal static class TtyDetector
@@ -8,7 +10,7 @@ internal static class TtyDetector
         {
             return !System.Console.IsOutputRedirected && !System.Console.IsErrorRedirected;
         }
-        catch
+        catch (Exception ex) when (ex is IOException or PlatformNotSupportedException or SecurityException)
         {
             return false;
         }

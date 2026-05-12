@@ -10,14 +10,15 @@ public sealed class PlaceholderStyleResolver
     private readonly List<(Regex Pattern, Style Style)> _byNamePattern = new();
     private readonly Dictionary<Type, Style> _byType = new();
     private readonly ConcurrentDictionary<string, Style?> _nameCache = new(StringComparer.Ordinal);
+    private int _frozen;
 
     public Style DefaultStyle { get; set; } = new(Color.Grey85);
     public Style NullStyle { get; set; } = new(Color.Grey50, decoration: Decoration.Dim);
 
     public PlaceholderStyleResolver ForName(string name, Style style)
     {
+        EnsureMutable();
         _byName[name] = style;
-        _nameCache.Clear();
         return this;
     }
 
@@ -25,13 +26,14 @@ public sealed class PlaceholderStyleResolver
 
     public PlaceholderStyleResolver ForNamePattern(string regex, Style style)
     {
+        EnsureMutable();
         _byNamePattern.Add((new Regex(regex, RegexOptions.IgnoreCase | RegexOptions.Compiled), style));
-        _nameCache.Clear();
         return this;
     }
 
     public PlaceholderStyleResolver ForType<T>(Style style)
     {
+        EnsureMutable();
         _byType[typeof(T)] = style;
         return this;
     }
@@ -40,12 +42,15 @@ public sealed class PlaceholderStyleResolver
 
     public PlaceholderStyleResolver ForType(Type type, Style style)
     {
+        EnsureMutable();
         _byType[type] = style;
         return this;
     }
 
     public Style Resolve(string name, object? value)
     {
+        Freeze();
+
         if (value is null)
         {
             return NullStyle;
@@ -69,6 +74,16 @@ public sealed class PlaceholderStyleResolver
         }
 
         return DefaultStyle;
+    }
+
+    private void Freeze() => Interlocked.CompareExchange(ref _frozen, 1, 0);
+
+    private void EnsureMutable()
+    {
+        if (Volatile.Read(ref _frozen) == 1)
+        {
+            throw new InvalidOperationException("PlaceholderStyleResolver is frozen after first Resolve. Configure all rules before the provider starts logging.");
+        }
     }
 
     private Style? ResolveByName(string name)

@@ -26,6 +26,10 @@ public sealed class SpectreConsoleLoggerOptions
 
     public int MaskedValueCacheCapacity { get; set; } = 256;
 
+    /// <summary>
+    /// Regex patterns evaluated against placeholder names to decide masking. Snapshotted into a compiled
+    /// regex array at provider construction — mutations after the provider starts are ignored.
+    /// </summary>
     public List<string> MaskedNamePatterns { get; } =
     [
         "password",
@@ -41,4 +45,6 @@ public sealed class SpectreConsoleLoggerOptions
     public IAnsiConsole? Console { get; set; }
 
     public TimeSpan ShutdownDrainTimeout { get; set; } = TimeSpan.FromSeconds(5);
+
+    public TimeSpan EnqueueWaitTimeout { get; set; } = TimeSpan.FromSeconds(1);
 }

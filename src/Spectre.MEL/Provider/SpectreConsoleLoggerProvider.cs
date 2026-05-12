@@ -17,8 +17,8 @@ internal sealed class SpectreConsoleLoggerProvider : ILoggerProvider, ISupportEx
     private readonly ConcurrentDictionary<string, SpectreConsoleLogger> _loggers = new(StringComparer.Ordinal);
     private readonly BackgroundWriter _writer;
     private readonly SpectreConsoleLoggerOptions _options;
-    private IExternalScopeProvider? _scopeProvider;
-    private bool _disposed;
+    private volatile IExternalScopeProvider? _scopeProvider;
+    private int _disposed;
 
     public SpectreConsoleLoggerProvider(IOptions<SpectreConsoleLoggerOptions> options)
     {
@@ -37,7 +37,8 @@ internal sealed class SpectreConsoleLoggerProvider : ILoggerProvider, ISupportEx
             renderer,
             _options.ChannelCapacity,
             _options.BackpressureMode,
-            _options.ShutdownDrainTimeout);
+            _options.ShutdownDrainTimeout,
+            _options.EnqueueWaitTimeout);
     }
 
     public ILogger CreateLogger(string categoryName)
@@ -58,13 +59,26 @@ internal sealed class SpectreConsoleLoggerProvider : ILoggerProvider, ISupportEx
 
     public void Dispose()
     {
-        DisposeAsync().AsTask().GetAwaiter().GetResult();
+        if (Interlocked.Exchange(ref _disposed, 1) == 1)
+        {
+            return;
+        }
+        try
+        {
+            Task.Run(() => _writer.DisposeAsync().AsTask()).GetAwaiter().GetResult();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+        {
+            try { System.Console.Error.WriteLine($"Spectre.MEL: dispose fault: {ex}"); } catch { }
+        }
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (_disposed) return;
-        _disposed = true;
+        if (Interlocked.Exchange(ref _disposed, 1) == 1)
+        {
+            return;
+        }
         await _writer.DisposeAsync().ConfigureAwait(false);
     }
 

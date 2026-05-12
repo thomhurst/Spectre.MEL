@@ -5,9 +5,6 @@ A `Microsoft.Extensions.Logging` provider that renders log entries through
 first-class awareness of CI runners.
 
 - Rich ANSI colour, exception rendering, scope handling.
-- Native CI integration: GitHub Actions, Azure Pipelines, GitLab CI, TeamCity,
-  Jenkins, CircleCI, Buildkite, AppVeyor, Travis. Scopes become collapsible
-  groups, warnings/errors get native annotations, secrets get `::add-mask::`.
 - Type-aware placeholder highlighting (`int`→cyan, `string`→yellow, ...) with
   name-hint overrides (`UserId`, `Email`, `StatusCode`, ...).
 - Secret masking by regex on placeholder names (`password`, `token`, `secret`,
@@ -15,6 +12,23 @@ first-class awareness of CI runners.
 - Interactive vs non-interactive detection with sensible ANSI behaviour.
 - Channel-based background writer, single consumer, ordered output.
 - Works with `[LoggerMessage]` source-generated logging.
+
+## CI runner support
+
+Auto-detected from environment variables. Runners with **native renderers**
+emit collapsible groups, level annotations, and (where supported) secret masks:
+
+| Runner | Group syntax | Level annotations | Secret mask |
+|--------|--------------|-------------------|-------------|
+| GitHub Actions | `::group::` / `::endgroup::` | `::error::` / `::warning::` / `::debug::` | `::add-mask::` |
+| Azure Pipelines | `##[group]` / `##[endgroup]` | `##[error]` / `##[warning]` / `##[debug]` | — |
+| GitLab CI | `section_start` / `section_end` | — | — |
+| TeamCity | `##teamcity[blockOpened]` | `##teamcity[message status=...]` | — |
+| Buildkite | `--- <label>` | — | — |
+| Travis | `travis_fold:start/end` | — | — |
+
+Jenkins, CircleCI, and AppVeyor are detected and use a passthrough renderer:
+plain ANSI output with no grouping or annotations.
 
 ## Install
 
@@ -37,9 +51,8 @@ var logger = sp.GetRequiredService<ILogger<Program>>();
 logger.LogInformation("User {UserId} logged in", 42);
 ```
 
-`AddSpectreConsole` removes the default `ConsoleLoggerProvider` so you do not
-get duplicate output. Pass `o => o.ReplaceDefaultConsoleLogger = false` to
-disable that behaviour.
+`AddSpectreConsole` removes the registered `ConsoleLoggerProvider` so you do
+not get duplicate output.
 
 ## Themes
 
@@ -58,24 +71,45 @@ builder.AddSpectreConsole(o =>
 
 Built-in themes: `Default`, `Dark`, `Light`, `Monochrome`.
 
+> The `PlaceholderStyleResolver` is **configure-once**: it freezes on first
+> log call. Adding rules after the first log throws `InvalidOperationException`.
+
 ## CI detection
-
-By default Spectre.MEL auto-detects the active CI runner from environment
-variables (`GITHUB_ACTIONS`, `TF_BUILD`, `GITLAB_CI`, ...). Override with
-`o.CiMode = CiMode.GitHubActions` or `CiMode.Off`.
-
-## Secret masking
-
-Placeholders whose name matches any of the configured regex patterns are
-rendered as `***`. On GitHub Actions, Spectre.MEL also emits `::add-mask::` so
-the unmasked value is redacted from subsequent build steps.
 
 ```csharp
 builder.AddSpectreConsole(o =>
 {
-    o.MaskedNamePatterns.Add("(?i)session.*id");
+    o.CiMode = CiMode.GitHubActions; // or Auto, Off, AzurePipelines, etc.
 });
 ```
+
+## Secret masking
+
+Placeholders whose name matches any of the configured regex patterns are
+rendered as `***`. On GitHub Actions, Spectre.MEL also emits `::add-mask::`
+once per distinct value so the unmasked value is redacted from subsequent
+build steps.
+
+```csharp
+builder.AddSpectreConsole(o =>
+{
+    o.MaskedNamePatterns.Add("session.*id");
+});
+```
+
+> `MaskedNamePatterns` is snapshotted at provider construction; mutations
+> after the provider starts are ignored.
+
+## Backpressure
+
+The background writer uses a bounded `Channel<LogEntry>`. When full:
+
+- `BackpressureMode.Wait` (default) — log call spins, then waits up to
+  `EnqueueWaitTimeout` (default 1 s) before dropping with a counter increment.
+- `BackpressureMode.DropNewest` — drop the incoming entry.
+- `BackpressureMode.DropOldest` — drop the oldest queued entry.
+
+Drops after provider disposal write a one-shot warning to `stderr`.
 
 ## License
 

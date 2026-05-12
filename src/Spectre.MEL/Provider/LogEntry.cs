@@ -3,7 +3,7 @@ using Spectre.MEL.Scopes;
 
 namespace Spectre.MEL.Provider;
 
-internal sealed class LogEntry
+internal sealed record LogEntry
 {
     public DateTimeOffset Timestamp { get; init; }
     public LogLevel Level { get; init; }

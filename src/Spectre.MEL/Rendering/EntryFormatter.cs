@@ -122,10 +122,14 @@ internal sealed class EntryFormatter
             return name;
         }
 
-        var lower = format.StartsWith('l');
-        if (lower)
+        var prefix = format[0];
+        if (prefix == 'l' || prefix == 'L')
         {
             name = name.ToLowerInvariant();
+        }
+        else if (prefix != 'u' && prefix != 'U')
+        {
+            return name;
         }
 
         if (format.Length > 1 && int.TryParse(format.AsSpan(1), out var width))
