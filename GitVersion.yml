@@ -1,8 +1,8 @@
-workflow: TrunkBased/preview1
-mode: ContinuousDeployment
+workflow: GitHubFlow/v1
 tag-prefix: '[vV]?'
 branches:
   main:
+    mode: ContinuousDeployment
     label: ''
     increment: Minor
   feature:
