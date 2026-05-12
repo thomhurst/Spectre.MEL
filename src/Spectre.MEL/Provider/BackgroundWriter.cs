@@ -18,8 +18,10 @@ internal sealed class BackgroundWriter : IAsyncDisposable
     private readonly Stack<ScopeFrame> _activeScopes = new();
     private long _droppedAfterDispose;
     private long _droppedBackpressure;
+    private long _droppedChannelFault;
     private OnceFlag _droppedAfterDisposeWarning;
     private OnceFlag _droppedBackpressureWarning;
+    private OnceFlag _droppedChannelFaultWarning;
     private OnceFlag _drainTimeoutWarning;
     private OnceFlag _scopesClosed;
 
@@ -58,6 +60,8 @@ internal sealed class BackgroundWriter : IAsyncDisposable
     public long DroppedAfterDisposeCount => Interlocked.Read(ref _droppedAfterDispose);
 
     public long DroppedBackpressureCount => Interlocked.Read(ref _droppedBackpressure);
+
+    public long DroppedChannelFaultCount => Interlocked.Read(ref _droppedChannelFault);
 
     public void Enqueue(LogEntry entry)
     {
@@ -123,8 +127,7 @@ internal sealed class BackgroundWriter : IAsyncDisposable
                 }
                 catch (Exception ex) when (!FatalExceptions.IsFatal(ex))
                 {
-                    EmitDiagnostic($"Spectre.MEL: enqueue wait fault: {ex.GetType().Name}: {ex.Message}");
-                    RecordDropAfterDispose();
+                    RecordChannelFault(ex);
                     return;
                 }
             }
@@ -147,6 +150,15 @@ internal sealed class BackgroundWriter : IAsyncDisposable
         if (_droppedBackpressureWarning.TrySet())
         {
             EmitDiagnostic($"Spectre.MEL: log entry dropped due to backpressure ({_backpressureMode}); consider raising ChannelCapacity or EnqueueWaitTimeout.");
+        }
+    }
+
+    private void RecordChannelFault(Exception ex)
+    {
+        Interlocked.Increment(ref _droppedChannelFault);
+        if (_droppedChannelFaultWarning.TrySet())
+        {
+            EmitDiagnostic($"Spectre.MEL: log entry dropped due to channel fault: {ex.GetType().Name}: {ex.Message}");
         }
     }
 

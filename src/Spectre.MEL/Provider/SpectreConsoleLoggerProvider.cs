@@ -41,6 +41,8 @@ internal sealed class SpectreConsoleLoggerProvider : ILoggerProvider, ISupportEx
             _options.BackpressureMode,
             _options.ShutdownDrainTimeout,
             _options.EnqueueWaitTimeout);
+
+        _options.Theme.Freeze();
     }
 
     public ILogger CreateLogger(string categoryName)

@@ -47,8 +47,6 @@ internal sealed class EntryFormatter
             _messageOpenTag = $"[{_messageStyle.ToMarkup()}]";
             _messageCloseTag = "[/]";
         }
-
-        theme.Freeze();
     }
 
     public string Format(LogEntry entry, List<string>? maskValueSink = null)

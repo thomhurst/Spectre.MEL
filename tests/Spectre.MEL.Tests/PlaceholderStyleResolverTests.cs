@@ -115,10 +115,12 @@ public class PlaceholderStyleResolverTests
     }
 
     [Test]
-    public async Task Resolver_remains_consistent_under_concurrent_resolve_and_mutation()
+    public async Task Resolver_mutation_after_resolve_throws_freeze_error()
     {
         var resolver = new PlaceholderStyleResolver();
         resolver.ForName("seed", new Style(Color.Red));
+
+        _ = resolver.Resolve("seed", 1);
 
         var resolveTask = Task.Run(() =>
         {
@@ -129,25 +131,19 @@ public class PlaceholderStyleResolverTests
             }
         });
 
-        var mutationExceptions = new List<Exception>();
-        for (var i = 0; i < 1_000; i++)
+        InvalidOperationException? thrown = null;
+        try
         {
-            try
-            {
-                resolver.ForName($"k{i}", new Style(Color.Blue));
-            }
-            catch (InvalidOperationException ex)
-            {
-                mutationExceptions.Add(ex);
-                break;
-            }
+            resolver.ForName("after", new Style(Color.Blue));
+        }
+        catch (InvalidOperationException ex)
+        {
+            thrown = ex;
         }
 
         await resolveTask;
 
-        if (mutationExceptions.Count > 0)
-        {
-            await Assert.That(mutationExceptions[0].Message).Contains("frozen");
-        }
+        await Assert.That(thrown).IsNotNull();
+        await Assert.That(thrown!.Message).Contains("frozen");
     }
 }

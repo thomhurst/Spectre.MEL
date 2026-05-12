@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Spectre.MEL;
 using TUnit.Assertions;
@@ -121,5 +122,52 @@ public class EntryFormatterTests
         }, o => o.Template = "{EventId} {Message}");
 
         await Assert.That(output).Contains("#42 OrderPlaced");
+    }
+
+    [Test]
+    public async Task MessageStyle_wraps_message_segment_when_non_plain()
+    {
+        var theme = new Spectre.MEL.Theme.SpectreTheme
+        {
+            MessageStyle = new Spectre.Console.Style(decoration: Spectre.Console.Decoration.Bold),
+        };
+        var template = new Spectre.MEL.Templates.OutputTemplate("{Message}");
+        var masker = new Spectre.MEL.Masking.SecretMasker(new SpectreConsoleLoggerOptions().MaskedNamePatterns, 256);
+        var formatter = new Spectre.MEL.Rendering.EntryFormatter(template, theme, masker);
+
+        var entry = new Spectre.MEL.Provider.LogEntry
+        {
+            Timestamp = DateTimeOffset.Now,
+            Level = LogLevel.Information,
+            Category = "Test",
+            Message = "hello",
+            OriginalFormat = "hello",
+        };
+
+        var rendered = formatter.Format(entry);
+        await Assert.That(rendered).Contains("hello");
+        await Assert.That(rendered).Contains("bold");
+        await Assert.That(rendered).Contains("[/]");
+    }
+
+    [Test]
+    public async Task MessageStyle_plain_does_not_wrap()
+    {
+        var theme = Spectre.MEL.Theme.SpectreTheme.Monochrome;
+        var template = new Spectre.MEL.Templates.OutputTemplate("{Message}");
+        var masker = new Spectre.MEL.Masking.SecretMasker(new SpectreConsoleLoggerOptions().MaskedNamePatterns, 256);
+        var formatter = new Spectre.MEL.Rendering.EntryFormatter(template, theme, masker);
+
+        var entry = new Spectre.MEL.Provider.LogEntry
+        {
+            Timestamp = DateTimeOffset.Now,
+            Level = LogLevel.Information,
+            Category = "Test",
+            Message = "plain",
+            OriginalFormat = "plain",
+        };
+
+        var rendered = formatter.Format(entry);
+        await Assert.That(rendered).IsEqualTo("plain");
     }
 }

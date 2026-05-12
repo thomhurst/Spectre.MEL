@@ -66,6 +66,7 @@ builder.AddSpectreConsole(o =>
             p.ForName("UserId", Color.Aqua);
             p.ForType<bool>(Color.Magenta1);
         });
+    o.Theme.MessageStyle = new Style(Color.White);
 });
 ```
 

@@ -1,5 +1,9 @@
 namespace Spectre.MEL;
 
+/// <summary>
+/// Single-shot latch. Must live as a field on the owning type — copying by
+/// value forks the latch and breaks the at-most-once contract.
+/// </summary>
 internal struct OnceFlag
 {
     private int _value;

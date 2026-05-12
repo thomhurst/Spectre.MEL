@@ -17,5 +17,5 @@
 - Options validated via `IValidateOptions<SpectreConsoleLoggerOptions>` with
   `.ValidateOnStart()`: failures (bad template, invalid regex, out-of-range
   timeouts, `Wait` mode with zero timeout) surface at host startup.
-- TUnit + Spectre.Console.Testing-based test suite (108 tests).
+- TUnit + Spectre.Console.Testing-based test suite (120 tests).
 - BenchmarkDotNet baseline against `Microsoft.Extensions.Logging.Console`.

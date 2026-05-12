@@ -29,7 +29,7 @@ internal static class PlaceholderFormatter
         {
             var unmasked = FormatValue(placeholder.Value, format);
             var masked = SecretMasker.Mask(placeholder.Value);
-            return (masked, unmasked, true);
+            return (Markup.Escape(masked), unmasked, true);
         }
 
         var formatted = FormatValue(placeholder.Value, format);
