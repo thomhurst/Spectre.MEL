@@ -52,16 +52,34 @@ public class MessageFormatterTests
     }
 
     [Test]
-    public async Task Masked_value_with_brackets_is_escaped_for_markup_safety()
+    public async Task Masked_placeholder_renders_safe_markup()
     {
         var theme = SpectreTheme.Monochrome;
         var masker = NewMasker();
-        var anon = new { Marker = 1 };
-        var placeholders = new[] { new Placeholder("Token", anon, anon.GetType()) };
+        var placeholders = new[] { new Placeholder("Token", "abc", typeof(string)) };
 
         var result = MessageFormatter.Render("{Token}", "fb", placeholders, theme, masker);
 
         await Assert.That(result).Contains("***");
         _ = new Spectre.Console.Markup(result);
+    }
+
+    [Test]
+    public async Task Unmasked_value_with_brackets_is_escaped_for_markup_safety()
+    {
+        var theme = SpectreTheme.Monochrome;
+        var masker = NewMasker();
+        var value = new BracketyToString();
+        var placeholders = new[] { new Placeholder("Value", value, typeof(BracketyToString)) };
+
+        var result = MessageFormatter.Render("{Value}", "fb", placeholders, theme, masker);
+
+        await Assert.That(result).Contains("[[REDACTED]]");
+        _ = new Spectre.Console.Markup(result);
+    }
+
+    private sealed class BracketyToString
+    {
+        public override string ToString() => "[REDACTED]";
     }
 }

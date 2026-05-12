@@ -1,4 +1,7 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Spectre.Console;
+using Spectre.MEL;
 using Spectre.MEL.Theme;
 using TUnit.Assertions;
 using TUnit.Assertions.Extensions;
@@ -112,6 +115,25 @@ public class PlaceholderStyleResolverTests
         await Assert.That(theme.IsFrozen).IsTrue();
         await Assert.That(() => theme.TimestampStyle = new Style(Color.Red))
             .Throws<InvalidOperationException>();
+    }
+
+    [Test]
+    public async Task Provider_construction_freezes_theme()
+    {
+        var theme = new SpectreTheme();
+        await Assert.That(theme.IsFrozen).IsFalse();
+
+        await using var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection()
+            .AddLogging(b => b.AddSpectreConsole(o =>
+            {
+                o.Theme = theme;
+                o.Console = new Spectre.Console.Testing.TestConsole { Profile = { Width = 1_000_000 } };
+            }))
+            .BuildServiceProvider();
+
+        _ = services.GetRequiredService<Microsoft.Extensions.Logging.ILoggerFactory>().CreateLogger("X");
+
+        await Assert.That(theme.IsFrozen).IsTrue();
     }
 
     [Test]
