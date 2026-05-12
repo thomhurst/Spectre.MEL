@@ -11,7 +11,6 @@ public sealed class SpectreTheme
     private Style _timestampStyle = new(Color.Grey50);
     private Style _categoryStyle = new(Color.Grey70);
     private Style _messageStyle = new(Color.Default);
-    private Style _exceptionStyle = new(Color.Red);
     private Style _scopeStyle = new(Color.Grey, decoration: Decoration.Italic);
     private Style _eventIdStyle = new(Color.Grey50, decoration: Decoration.Dim);
     private PlaceholderStyleResolver _placeholders = BuildDefaultPlaceholders();
@@ -45,12 +44,6 @@ public sealed class SpectreTheme
     {
         get => _messageStyle;
         set => Set(ref _messageStyle, value);
-    }
-
-    public Style ExceptionStyle
-    {
-        get => _exceptionStyle;
-        set => Set(ref _exceptionStyle, value);
     }
 
     public Style ScopeStyle
@@ -94,6 +87,8 @@ public sealed class SpectreTheme
         }
         return this;
     }
+
+    public bool IsFrozen => Volatile.Read(ref _frozen);
 
     internal void Freeze()
     {
@@ -160,7 +155,6 @@ public sealed class SpectreTheme
                 TimestampStyle = Style.Plain,
                 CategoryStyle = Style.Plain,
                 MessageStyle = Style.Plain,
-                ExceptionStyle = Style.Plain,
                 ScopeStyle = Style.Plain,
                 EventIdStyle = Style.Plain,
                 Placeholders = new PlaceholderStyleResolver

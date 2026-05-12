@@ -18,10 +18,10 @@ internal sealed class BackgroundWriter : IAsyncDisposable
     private readonly Stack<ScopeFrame> _activeScopes = new();
     private long _droppedAfterDispose;
     private long _droppedBackpressure;
-    private int _droppedAfterDisposeWarningEmitted;
-    private int _droppedBackpressureWarningEmitted;
-    private int _drainTimeoutEmitted;
-    private int _scopesClosed;
+    private OnceFlag _droppedAfterDisposeWarning;
+    private OnceFlag _droppedBackpressureWarning;
+    private OnceFlag _drainTimeoutWarning;
+    private OnceFlag _scopesClosed;
 
     public BackgroundWriter(
         IAnsiConsole console,
@@ -121,6 +121,12 @@ internal sealed class BackgroundWriter : IAsyncDisposable
                     RecordBackpressureDrop();
                     return;
                 }
+                catch (Exception ex) when (!FatalExceptions.IsFatal(ex))
+                {
+                    EmitDiagnostic($"Spectre.MEL: enqueue wait fault: {ex.GetType().Name}: {ex.Message}");
+                    RecordDropAfterDispose();
+                    return;
+                }
             }
             spinner.SpinOnce();
         }
@@ -129,7 +135,7 @@ internal sealed class BackgroundWriter : IAsyncDisposable
     private void RecordDropAfterDispose()
     {
         Interlocked.Increment(ref _droppedAfterDispose);
-        if (Interlocked.Exchange(ref _droppedAfterDisposeWarningEmitted, 1) == 0)
+        if (_droppedAfterDisposeWarning.TrySet())
         {
             EmitDiagnostic("Spectre.MEL: log entry dropped after provider disposal.");
         }
@@ -138,7 +144,7 @@ internal sealed class BackgroundWriter : IAsyncDisposable
     private void RecordBackpressureDrop()
     {
         Interlocked.Increment(ref _droppedBackpressure);
-        if (Interlocked.Exchange(ref _droppedBackpressureWarningEmitted, 1) == 0)
+        if (_droppedBackpressureWarning.TrySet())
         {
             EmitDiagnostic($"Spectre.MEL: log entry dropped due to backpressure ({_backpressureMode}); consider raising ChannelCapacity or EnqueueWaitTimeout.");
         }
@@ -173,7 +179,7 @@ internal sealed class BackgroundWriter : IAsyncDisposable
 
     private void TryCloseAllScopes()
     {
-        if (Interlocked.Exchange(ref _scopesClosed, 1) != 0)
+        if (!_scopesClosed.TrySet())
         {
             return;
         }
@@ -252,7 +258,7 @@ internal sealed class BackgroundWriter : IAsyncDisposable
         }
         catch (TimeoutException)
         {
-            if (Interlocked.Exchange(ref _drainTimeoutEmitted, 1) == 0)
+            if (_drainTimeoutWarning.TrySet())
             {
                 EmitDiagnostic($"Spectre.MEL: drain timeout after {_drainTimeout}; some log entries may be lost.");
             }

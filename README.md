@@ -73,9 +73,10 @@ Built-in themes: `Default`, `Dark`, `Light`, `Monochrome`.
 
 > Both `SpectreTheme` and its `PlaceholderStyleResolver` are **configure-once**:
 > they freeze when the provider is constructed. Mutating styles or adding rules
-> afterwards throws `InvalidOperationException`. Invalid regex patterns, malformed
-> templates, and out-of-range timeouts all fail validation at host startup
-> via `IValidateOptions<SpectreConsoleLoggerOptions>`.
+> afterwards throws `InvalidOperationException` from the setter / fluent call.
+> Invalid regex patterns, malformed templates, and out-of-range timeouts all
+> fail validation at host startup via `IValidateOptions<SpectreConsoleLoggerOptions>`
+> (chained with `.ValidateOnStart()`).
 
 ## CI detection
 

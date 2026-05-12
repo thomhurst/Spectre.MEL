@@ -22,7 +22,9 @@ internal sealed class SpectreConsoleLoggerProvider : ILoggerProvider, ISupportEx
 
     public SpectreConsoleLoggerProvider(IOptions<SpectreConsoleLoggerOptions> options)
     {
+        ArgumentNullException.ThrowIfNull(options);
         _options = options.Value;
+        ArgumentNullException.ThrowIfNull(_options.Theme, $"{nameof(SpectreConsoleLoggerOptions)}.{nameof(SpectreConsoleLoggerOptions.Theme)}");
 
         var ciMode = _options.CiMode == CiMode.Auto ? CiDetector.DetectFromEnvironment() : _options.CiMode;
         var console = _options.Console ?? BuildAnsiConsole(_options, ciMode);
@@ -39,8 +41,6 @@ internal sealed class SpectreConsoleLoggerProvider : ILoggerProvider, ISupportEx
             _options.BackpressureMode,
             _options.ShutdownDrainTimeout,
             _options.EnqueueWaitTimeout);
-
-        _options.Theme.Freeze();
     }
 
     public ILogger CreateLogger(string categoryName)

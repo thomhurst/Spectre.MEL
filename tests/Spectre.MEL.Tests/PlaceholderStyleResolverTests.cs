@@ -102,4 +102,52 @@ public class PlaceholderStyleResolverTests
         var second = (SpectreTheme)prop.GetValue(null)!;
         await Assert.That(ReferenceEquals(first, second)).IsFalse();
     }
+
+    [Test]
+    public async Task Theme_freeze_is_idempotent()
+    {
+        var theme = new SpectreTheme();
+        theme.Freeze();
+        theme.Freeze();
+        await Assert.That(theme.IsFrozen).IsTrue();
+        await Assert.That(() => theme.TimestampStyle = new Style(Color.Red))
+            .Throws<InvalidOperationException>();
+    }
+
+    [Test]
+    public async Task Resolver_remains_consistent_under_concurrent_resolve_and_mutation()
+    {
+        var resolver = new PlaceholderStyleResolver();
+        resolver.ForName("seed", new Style(Color.Red));
+
+        var resolveTask = Task.Run(() =>
+        {
+            for (var i = 0; i < 5_000; i++)
+            {
+                _ = resolver.Resolve("seed", 1);
+                _ = resolver.Resolve("other", "x");
+            }
+        });
+
+        var mutationExceptions = new List<Exception>();
+        for (var i = 0; i < 1_000; i++)
+        {
+            try
+            {
+                resolver.ForName($"k{i}", new Style(Color.Blue));
+            }
+            catch (InvalidOperationException ex)
+            {
+                mutationExceptions.Add(ex);
+                break;
+            }
+        }
+
+        await resolveTask;
+
+        if (mutationExceptions.Count > 0)
+        {
+            await Assert.That(mutationExceptions[0].Message).Contains("frozen");
+        }
+    }
 }

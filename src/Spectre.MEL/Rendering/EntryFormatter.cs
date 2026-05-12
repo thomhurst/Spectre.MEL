@@ -16,9 +16,12 @@ internal sealed class EntryFormatter
     private readonly SecretMasker _masker;
     private readonly Style _timestampStyle;
     private readonly Style _categoryStyle;
+    private readonly Style _messageStyle;
     private readonly Style _scopeStyle;
     private readonly Style _eventIdStyle;
     private readonly FrozenDictionary<LogLevel, Style> _levelStyles;
+    private readonly string _messageOpenTag;
+    private readonly string _messageCloseTag;
 
     public EntryFormatter(OutputTemplate template, SpectreTheme theme, SecretMasker masker)
     {
@@ -27,11 +30,25 @@ internal sealed class EntryFormatter
         _masker = masker;
         _timestampStyle = theme.TimestampStyle;
         _categoryStyle = theme.CategoryStyle;
+        _messageStyle = theme.MessageStyle;
         _scopeStyle = theme.ScopeStyle;
         _eventIdStyle = theme.EventIdStyle;
         _levelStyles = Enum.GetValues<LogLevel>()
             .Where(l => l != LogLevel.None)
             .ToFrozenDictionary(l => l, theme.ForLevel);
+
+        if (MarkupHelper.IsPlain(_messageStyle))
+        {
+            _messageOpenTag = string.Empty;
+            _messageCloseTag = string.Empty;
+        }
+        else
+        {
+            _messageOpenTag = $"[{_messageStyle.ToMarkup()}]";
+            _messageCloseTag = "[/]";
+        }
+
+        theme.Freeze();
     }
 
     public string Format(LogEntry entry, List<string>? maskValueSink = null)
@@ -60,7 +77,9 @@ internal sealed class EntryFormatter
                     }
                     break;
                 case SegmentKind.Message:
+                    builder.Append(_messageOpenTag);
                     builder.Append(MessageFormatter.Render(entry.OriginalFormat, entry.Message, entry.Placeholders, _theme, _masker, maskValueSink));
+                    builder.Append(_messageCloseTag);
                     break;
                 case SegmentKind.NewLine:
                     builder.AppendLine();
