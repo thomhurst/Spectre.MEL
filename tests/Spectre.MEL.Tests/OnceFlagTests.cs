@@ -30,6 +30,7 @@ public class OnceFlagTests
             }
         });
         await Assert.That(winners).IsEqualTo(1);
+        await Assert.That(holder.Flag.IsSet).IsTrue();
     }
 
     private sealed class Holder

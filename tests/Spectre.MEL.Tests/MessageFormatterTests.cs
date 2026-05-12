@@ -50,4 +50,18 @@ public class MessageFormatterTests
         var result = MessageFormatter.Render("[group] {Value}", "fb", [new Placeholder("Value", 1, typeof(int))], theme, masker);
         await Assert.That(result).IsEqualTo("[[group]] 1");
     }
+
+    [Test]
+    public async Task Masked_value_with_brackets_is_escaped_for_markup_safety()
+    {
+        var theme = SpectreTheme.Monochrome;
+        var masker = NewMasker();
+        var anon = new { Marker = 1 };
+        var placeholders = new[] { new Placeholder("Token", anon, anon.GetType()) };
+
+        var result = MessageFormatter.Render("{Token}", "fb", placeholders, theme, masker);
+
+        await Assert.That(result).Contains("***");
+        _ = new Spectre.Console.Markup(result);
+    }
 }

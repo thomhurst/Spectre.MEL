@@ -30,6 +30,7 @@ internal sealed class SpectreConsoleLoggerProvider : ILoggerProvider, ISupportEx
         var console = _options.Console ?? BuildAnsiConsole(_options, ciMode);
         var template = new OutputTemplate(_options.Template);
         var masker = new SecretMasker(_options.MaskedNamePatterns, _options.MaskedValueCacheCapacity);
+        _options.Theme.Freeze();
         var formatter = new EntryFormatter(template, _options.Theme, masker);
         var context = new RendererContext(formatter, masker, _options.ExceptionFormats);
         var renderer = ResolveRenderer(ciMode, context);
@@ -41,8 +42,6 @@ internal sealed class SpectreConsoleLoggerProvider : ILoggerProvider, ISupportEx
             _options.BackpressureMode,
             _options.ShutdownDrainTimeout,
             _options.EnqueueWaitTimeout);
-
-        _options.Theme.Freeze();
     }
 
     public ILogger CreateLogger(string categoryName)

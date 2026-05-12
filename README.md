@@ -57,6 +57,11 @@ not get duplicate output.
 ## Themes
 
 ```csharp
+using Microsoft.Extensions.Logging;
+using Spectre.Console;
+using Spectre.MEL;
+using Spectre.MEL.Theme;
+
 builder.AddSpectreConsole(o =>
 {
     o.Theme = SpectreTheme.Dark
