@@ -7,26 +7,49 @@ internal sealed class SecretMasker
 {
     private const string MaskedToken = "***";
 
-    private readonly Regex[] _patterns;
+    private readonly Regex[] _namePatterns;
+    private readonly Regex[] _valuePatterns;
     private readonly ConcurrentDictionary<string, bool> _shouldMaskCache = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, byte> _emitted = new();
     private readonly int _capacity;
 
-    public SecretMasker(IEnumerable<string> patterns, int valueCacheCapacity)
+    public SecretMasker(IEnumerable<string> namePatterns, int valueCacheCapacity)
+        : this(namePatterns, Array.Empty<string>(), valueCacheCapacity)
     {
-        _patterns = patterns
+    }
+
+    public SecretMasker(IEnumerable<string> namePatterns, IEnumerable<string> valuePatterns, int valueCacheCapacity)
+    {
+        _namePatterns = namePatterns
+            .Select(p => new Regex(p, RegexOptions.IgnoreCase | RegexOptions.Compiled))
+            .ToArray();
+        _valuePatterns = valuePatterns
             .Select(p => new Regex(p, RegexOptions.IgnoreCase | RegexOptions.Compiled))
             .ToArray();
         _capacity = Math.Max(0, valueCacheCapacity);
     }
 
-    public bool ShouldMask(string name) => _shouldMaskCache.GetOrAdd(name, MatchPatterns);
+    public bool HasValuePatterns => _valuePatterns.Length > 0;
 
-    private bool MatchPatterns(string name)
+    public bool ShouldMask(string name) => _shouldMaskCache.GetOrAdd(name, MatchNamePatterns);
+
+    public bool ShouldMaskValue(string value)
     {
-        for (var i = 0; i < _patterns.Length; i++)
+        for (var i = 0; i < _valuePatterns.Length; i++)
         {
-            if (_patterns[i].IsMatch(name))
+            if (_valuePatterns[i].IsMatch(value))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private bool MatchNamePatterns(string name)
+    {
+        for (var i = 0; i < _namePatterns.Length; i++)
+        {
+            if (_namePatterns[i].IsMatch(name))
             {
                 return true;
             }
