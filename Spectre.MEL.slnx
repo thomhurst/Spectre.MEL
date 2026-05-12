@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Spectre.MEL/Spectre.MEL.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Spectre.MEL.Tests/Spectre.MEL.Tests.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/ConsoleApp/ConsoleApp.csproj" />
+    <Project Path="samples/WebApi/WebApi.csproj" />
+    <Project Path="samples/Worker/Worker.csproj" />
+  </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/Spectre.MEL.Benchmarks/Spectre.MEL.Benchmarks.csproj" />
+  </Folder>
+</Solution>
