@@ -35,7 +35,9 @@ internal abstract class CiRendererBase : ICiRenderer
     public virtual void RenderEntry(IAnsiConsole console, LogEntry entry, int scopeDepth)
     {
         var maskValues = new List<string>(0);
-        var markup = _context.Formatter.Format(entry, maskValues);
+        var prefix = BuildLevelAnnotationPrefix(entry.Level);
+        var suppressLevel = prefix is not null && _context.SuppressInlineLevelOnCiAnnotation;
+        var markup = _context.Formatter.Format(entry, maskValues, suppressLevel);
 
         if (Capabilities.SupportsMasking)
         {
@@ -48,7 +50,6 @@ internal abstract class CiRendererBase : ICiRenderer
             }
         }
 
-        var prefix = BuildLevelAnnotationPrefix(entry.Level);
         if (prefix is not null)
         {
             console.Write(prefix);

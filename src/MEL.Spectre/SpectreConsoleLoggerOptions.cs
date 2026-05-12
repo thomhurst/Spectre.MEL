@@ -5,7 +5,7 @@ namespace MEL.Spectre;
 
 public sealed class SpectreConsoleLoggerOptions
 {
-    public string Template { get; set; } = "[{Timestamp:HH:mm:ss} {Level:u4} {Category}] {Message}";
+    public string Template { get; set; } = "[{Timestamp:HH:mm:ss} {Level:u5} {Category}] {Message}";
 
     public SpectreTheme Theme { get; set; } = SpectreTheme.Default;
 
@@ -16,6 +16,20 @@ public sealed class SpectreConsoleLoggerOptions
     public bool IncludeScopes { get; set; } = true;
 
     public bool IncludeActivity { get; set; } = true;
+
+    /// <summary>
+    /// When true, Spectre markup tags (e.g. <c>[green]✓[/]</c>) embedded in message templates are passed through
+    /// to the console renderer instead of being escaped. Placeholder values are still escaped. Defaults to false
+    /// because most loggers treat the message template as literal text.
+    /// </summary>
+    public bool AllowMarkupInMessageTemplate { get; set; }
+
+    /// <summary>
+    /// When true, suppress the rendered level segment (e.g. <c>[WARN]</c>) for entries whose level is also emitted
+    /// as a native CI annotation (such as <c>::warning::</c> for GitHub Actions). Avoids duplicate severity
+    /// markers on the same line. Defaults to false to preserve existing rendering.
+    /// </summary>
+    public bool SuppressInlineLevelOnCiAnnotation { get; set; }
 
     public ExceptionFormats ExceptionFormats { get; set; } =
         ExceptionFormats.ShortenPaths | ExceptionFormats.ShortenTypes | ExceptionFormats.ShortenMethods | ExceptionFormats.ShowLinks;

@@ -194,7 +194,7 @@ public sealed class SpectreTheme
         resolver.ForType<double>(Color.Aqua);
         resolver.ForType<decimal>(Color.Aqua);
         resolver.ForType<bool>(Color.Magenta1);
-        resolver.ForType<string>(Color.Yellow);
+        resolver.ForType<string>(Color.Wheat1);
         resolver.ForType<DateTime>(Color.MediumPurple1);
         resolver.ForType<DateTimeOffset>(Color.MediumPurple1);
         resolver.ForType<DateOnly>(Color.MediumPurple1);

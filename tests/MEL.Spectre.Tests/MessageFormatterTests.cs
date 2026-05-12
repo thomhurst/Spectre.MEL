@@ -78,6 +78,31 @@ public class MessageFormatterTests
         _ = new global::Spectre.Console.Markup(result);
     }
 
+    [Test]
+    public async Task Allows_markup_in_template_when_opted_in()
+    {
+        var theme = SpectreTheme.Monochrome;
+        var masker = NewMasker();
+        var placeholders = new[] { new Placeholder("Name", "auth", typeof(string)) };
+
+        var result = MessageFormatter.Render("[green]✓[/] Module {Name}", "fb", placeholders, theme, masker, allowMarkupInTemplate: true);
+
+        await Assert.That(result).IsEqualTo("[green]✓[/] Module auth");
+    }
+
+    [Test]
+    public async Task Markup_pass_through_still_escapes_brackety_placeholder_value()
+    {
+        var theme = SpectreTheme.Monochrome;
+        var masker = NewMasker();
+        var placeholders = new[] { new Placeholder("Value", new BracketyToString(), typeof(BracketyToString)) };
+
+        var result = MessageFormatter.Render("[cyan]{Value}[/]", "fb", placeholders, theme, masker, allowMarkupInTemplate: true);
+
+        await Assert.That(result).IsEqualTo("[cyan][[REDACTED]][/]");
+        _ = new global::Spectre.Console.Markup(result);
+    }
+
     private sealed class BracketyToString
     {
         public override string ToString() => "[REDACTED]";

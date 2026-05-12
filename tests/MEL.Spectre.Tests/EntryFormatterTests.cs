@@ -27,6 +27,23 @@ public class EntryFormatterTests
     }
 
     [Test]
+    [Arguments(LogLevel.Trace, "TRACE")]
+    [Arguments(LogLevel.Debug, "DEBUG")]
+    [Arguments(LogLevel.Information, "INFO ")]
+    [Arguments(LogLevel.Warning, "WARN ")]
+    [Arguments(LogLevel.Error, "ERROR")]
+    [Arguments(LogLevel.Critical, "CRIT ")]
+    public async Task Level_u5_default_renders_each_level_full_or_padded(LogLevel level, string expected)
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            logger.Log(level, "msg");
+        });
+
+        await Assert.That(output).Contains($"{expected} ");
+    }
+
+    [Test]
     public async Task Level_u6_pads_to_six_uppercase()
     {
         var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
