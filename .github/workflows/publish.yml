@@ -4,13 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       push:
-        description: 'Push the package to GitHub Packages'
+        description: 'Push the package to nuget.org'
         type: boolean
         default: true
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
   publish:
@@ -63,10 +62,10 @@ jobs:
           name: nupkg-${{ steps.gitversion.outputs.semVer }}
           path: ./artifacts/*.*nupkg
 
-      - name: Push to GitHub Packages
+      - name: Push to nuget.org
         if: ${{ inputs.push }}
         run: >-
           dotnet nuget push "./artifacts/*.nupkg"
-          --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
-          --api-key ${{ secrets.GITHUB_TOKEN }}
+          --source "https://api.nuget.org/v3/index.json"
+          --api-key ${{ secrets.NUGET_API_KEY }}
           --skip-duplicate
