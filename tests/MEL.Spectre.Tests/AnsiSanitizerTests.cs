@@ -158,6 +158,21 @@ public class AnsiSanitizerTests
     }
 
     [Test]
+    public async Task Reset_in_unmatched_brace_tail_closes_style_opened_before_it()
+    {
+        var masker = new SecretMasker(new SpectreConsoleLoggerOptions().MaskedNamePatterns, 256);
+        var result = MessageFormatter.Render(
+            $"{Esc}[31m{{err{Esc}[0m tail",
+            "fb",
+            [],
+            SpectreTheme.Monochrome,
+            masker);
+
+        var tag = new Style(Color.FromInt32(1)).ToMarkup();
+        await Assert.That(result).IsEqualTo($"[{tag}]{{err[/] tail");
+    }
+
+    [Test]
     public async Task Message_format_string_with_ansi_is_converted()
     {
         var masker = new SecretMasker(new SpectreConsoleLoggerOptions().MaskedNamePatterns, 256);

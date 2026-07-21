@@ -38,8 +38,19 @@ internal static class AnsiSanitizer
 
         var builder = new StringBuilder(text.Length + 16);
         var state = new AnsiMarkupState();
-        var convert = mode == EmbeddedAnsiMode.Convert;
-        var i = 0;
+        AppendSanitized(builder, text, 0, ref state, mode == EmbeddedAnsiMode.Convert, escapeMarkup, stripControls: true);
+        state.Flush(builder);
+        return builder.ToString();
+    }
+
+    /// <summary>
+    /// Sanitizes <paramref name="text"/> from <paramref name="start"/> onwards into
+    /// <paramref name="builder"/> using a caller-owned <paramref name="state"/>, so a sequence opened
+    /// before this call is still closed by a reset inside the text. The caller flushes the state.
+    /// </summary>
+    internal static void AppendSanitized(StringBuilder builder, string text, int start, ref AnsiMarkupState state, bool convert, bool escapeMarkup, bool stripControls)
+    {
+        var i = start;
         while (i < text.Length)
         {
             var c = text[i];
@@ -49,7 +60,7 @@ internal static class AnsiSanitizer
                 continue;
             }
 
-            if (char.IsControl(c) && c != '\n' && c != '\t')
+            if (stripControls && char.IsControl(c) && c != '\n' && c != '\t')
             {
                 i++;
                 continue;
@@ -66,9 +77,6 @@ internal static class AnsiSanitizer
             }
             i++;
         }
-
-        state.Flush(builder);
-        return builder.ToString();
     }
 }
 

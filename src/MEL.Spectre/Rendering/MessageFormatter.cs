@@ -41,8 +41,17 @@ internal static class MessageFormatter
                 var end = originalFormat.IndexOf('}', i + 1);
                 if (end < 0)
                 {
-                    ansi.BeforeAppend(builder);
-                    builder.Append(AnsiSanitizer.EscapeAndSanitize(originalFormat[i..], embeddedAnsi, escapeMarkup: !allowMarkupInTemplate));
+                    if (sanitizeAnsi)
+                    {
+                        // Continue with the shared state so a reset inside the tail still closes a
+                        // style opened before the unmatched brace.
+                        AnsiSanitizer.AppendSanitized(builder, originalFormat, i, ref ansi, embeddedAnsi == EmbeddedAnsiMode.Convert, escapeMarkup: !allowMarkupInTemplate, stripControls);
+                    }
+                    else
+                    {
+                        var tail = originalFormat[i..];
+                        builder.Append(allowMarkupInTemplate ? tail : Markup.Escape(tail));
+                    }
                     break;
                 }
 
