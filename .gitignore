@@ -56,5 +56,7 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 
-# Claude Code session state
-.claude/
+# Claude Code session state (keep shared skills/commands tracked)
+.claude/*
+!.claude/skills/
+!.claude/commands/
