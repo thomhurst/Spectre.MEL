@@ -147,6 +147,35 @@ public class AnsiSanitizerTests
     }
 
     [Test]
+    public async Task Embedded_escape_aborts_string_control_like_a_terminal()
+    {
+        // A non-ST ESC inside an OSC payload aborts the OSC (DEC/xterm behaviour): the following
+        // sequence is honoured and its text is displayed rather than treated as payload.
+        var result = AnsiSanitizer.EscapeAndSanitize($"{Esc}]0;title{Esc}[31mred", EmbeddedAnsiMode.Convert);
+        await Assert.That(result).IsEqualTo($"[{new Style(Color.FromInt32(1)).ToMarkup()}]red[/]");
+    }
+
+    [Test]
+    public async Task Value_pattern_masks_secret_interleaved_with_ansi()
+    {
+        var options = new SpectreConsoleLoggerOptions();
+        var masker = new SecretMasker(options.MaskedNamePatterns, options.MaskedValuePatterns, 256);
+        var secretBody = new string('a', 36);
+        var collected = new List<string>();
+
+        var result = MessageFormatter.Render(
+            "{Url}",
+            "fb",
+            [new Placeholder("Url", $"ghp_{Esc}[31m{secretBody}", typeof(string))],
+            SpectreTheme.Monochrome,
+            masker,
+            collected);
+
+        await Assert.That(result).IsEqualTo("***");
+        await Assert.That(collected).Contains($"ghp_{secretBody}");
+    }
+
+    [Test]
     public async Task Cursor_and_erase_sequences_are_removed_in_convert_mode()
     {
         var result = AnsiSanitizer.EscapeAndSanitize($"{Esc}[2K{Esc}[1Gprogress 100%", EmbeddedAnsiMode.Convert);

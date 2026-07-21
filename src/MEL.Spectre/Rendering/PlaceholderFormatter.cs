@@ -27,17 +27,24 @@ internal static class PlaceholderFormatter
     {
         if (masker.ShouldMask(placeholder.Name))
         {
-            var unmasked = FormatValue(placeholder.Value, format);
+            var unmasked = NormalizeForMasking(FormatValue(placeholder.Value, format));
             var masked = SecretMasker.Mask(placeholder.Value);
             return (Markup.Escape(masked), unmasked, true);
         }
 
         var formatted = FormatValue(placeholder.Value, format);
 
-        if (masker.HasValuePatterns && placeholder.Value is string && masker.ShouldMaskValue(formatted))
+        if (masker.HasValuePatterns && placeholder.Value is string)
         {
-            var masked = SecretMasker.Mask(placeholder.Value);
-            return (Markup.Escape(masked), formatted, true);
+            // Value patterns match against the ANSI-normalized text so a secret interleaved with
+            // escape sequences cannot dodge masking and reappear contiguous after sanitization. The
+            // normalized form is also what gets registered with the CI runner's masking.
+            var plain = NormalizeForMasking(formatted);
+            if (masker.ShouldMaskValue(plain))
+            {
+                var masked = SecretMasker.Mask(placeholder.Value);
+                return (Markup.Escape(masked), plain, true);
+            }
         }
 
         var style = theme.Placeholders.Resolve(placeholder.Name, placeholder.Value);
@@ -48,4 +55,9 @@ internal static class PlaceholderFormatter
         }
         return ($"[{style.ToMarkup()}]{safe}[/]", null, false);
     }
+
+    private static string NormalizeForMasking(string text) =>
+        AnsiSanitizer.ContainsAnsi(text)
+            ? AnsiSanitizer.EscapeAndSanitize(text, EmbeddedAnsiMode.Strip, escapeMarkup: false)
+            : text;
 }

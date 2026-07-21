@@ -388,6 +388,9 @@ internal struct AnsiMarkupState
             }
             if (c == AnsiSanitizer.EscapeChar)
             {
+                // ESC followed by '\' is ST. Any other ESC aborts the string control, matching the
+                // canonical DEC/xterm parser — deliberate, so an unterminated payload (e.g. an OSC
+                // split across line-by-line relayed output) cannot swallow the rest of the line.
                 return j + 1 < text.Length && text[j + 1] == '\\' ? j + 2 : j;
             }
             j++;
