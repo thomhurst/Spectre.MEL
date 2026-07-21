@@ -1,4 +1,7 @@
 using MEL.Spectre.Masking;
+using MEL.Spectre.Provider;
+using MEL.Spectre.Rendering;
+using MEL.Spectre.Theme;
 using TUnit.Assertions;
 using TUnit.Assertions.Extensions;
 
@@ -6,7 +9,11 @@ namespace MEL.Spectre.Tests;
 
 public class SecretMaskerTests
 {
-    private static SecretMasker BuildDefault() => new SecretMasker(new SpectreConsoleLoggerOptions().MaskedNamePatterns, 256);
+    private static SecretMasker BuildDefault()
+    {
+        var options = new SpectreConsoleLoggerOptions();
+        return new SecretMasker(options.MaskedNamePatterns, options.MaskedValuePatterns, 256);
+    }
 
     [Test]
     [Arguments("password")]
@@ -34,6 +41,60 @@ public class SecretMaskerTests
     }
 
     [Test]
+    [Arguments("ghp_", 36)]
+    [Arguments("ghs_", 36)]
+    [Arguments("gho_", 36)]
+    [Arguments("ghu_", 36)]
+    [Arguments("ghr_", 36)]
+    [Arguments("github_pat_", 22)]
+    [Arguments("glpat-", 20)]
+    [Arguments("xoxb-", 10)]
+    public async Task Matches_default_prefixed_token_values(string prefix, int bodyLength)
+    {
+        var value = prefix + new string('a', bodyLength);
+        await Assert.That(RenderDefaultValue(value)).IsEqualTo("***");
+    }
+
+    [Test]
+    public async Task Matches_default_aws_access_key_value()
+    {
+        await Assert.That(RenderDefaultValue("AKIA1234567890ABCDEF")).IsEqualTo("***");
+    }
+
+    [Test]
+    public async Task Matches_default_jwt_value()
+    {
+        await Assert.That(RenderDefaultValue("eyJaaaaaaaaaa.eyJbbbbbbbbbb.cccccccccc")).IsEqualTo("***");
+    }
+
+    [Test]
+    [Arguments("-----BEGIN PRIVATE KEY-----")]
+    [Arguments("-----BEGIN RSA PRIVATE KEY-----")]
+    public async Task Matches_default_private_key_header_value(string value)
+    {
+        await Assert.That(RenderDefaultValue(value)).IsEqualTo("***");
+    }
+
+    [Test]
+    [Arguments("ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    [Arguments("ghx_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    [Arguments("GHP_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    [Arguments("github_pat_aaaaaaaaaaaaaaaaaaaaa")]
+    [Arguments("github_bad_aaaaaaaaaaaaaaaaaaaaaa")]
+    [Arguments("glpat-aaaaaaaaaaaaaaaaaaa")]
+    [Arguments("glpt-aaaaaaaaaaaaaaaaaaaa")]
+    [Arguments("AKIA1234567890ABCDE")]
+    [Arguments("ASIA1234567890ABCDEF")]
+    [Arguments("xoxb-aaaaaaaaa")]
+    [Arguments("xoxz-aaaaaaaaaa")]
+    [Arguments("eyJaaaaaaaaa.eyJbbbbbbbbbb.cccccccccc")]
+    [Arguments("-----BEGIN PUBLIC KEY-----")]
+    public async Task Does_not_match_near_miss_token_values(string value)
+    {
+        await Assert.That(RenderDefaultValue(value)).IsEqualTo(value);
+    }
+
+    [Test]
     public async Task Mask_returns_stars_for_strings()
     {
         await Assert.That(SecretMasker.Mask("abc")).IsEqualTo("***");
@@ -57,4 +118,12 @@ public class SecretMaskerTests
         await Assert.That(masker.TryRegisterForEmission("b")).IsTrue();
         await Assert.That(masker.TryRegisterForEmission("c")).IsFalse();
     }
+
+    private static string RenderDefaultValue(string value) =>
+        MessageFormatter.Render(
+            "{Output}",
+            value,
+            [new Placeholder("Output", value, typeof(string))],
+            SpectreTheme.Monochrome,
+            BuildDefault());
 }
