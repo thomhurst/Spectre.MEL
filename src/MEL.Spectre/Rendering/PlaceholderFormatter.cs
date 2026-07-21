@@ -33,6 +33,13 @@ internal static class PlaceholderFormatter
         }
 
         var formatted = FormatValue(placeholder.Value, format);
+
+        if (masker.HasValuePatterns && placeholder.Value is string && masker.ShouldMaskValue(formatted))
+        {
+            var masked = SecretMasker.Mask(placeholder.Value);
+            return (Markup.Escape(masked), formatted, true);
+        }
+
         var style = theme.Placeholders.Resolve(placeholder.Name, placeholder.Value);
         if (MarkupHelper.IsPlain(style))
         {

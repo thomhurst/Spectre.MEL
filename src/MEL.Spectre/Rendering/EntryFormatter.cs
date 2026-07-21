@@ -14,6 +14,7 @@ internal sealed class EntryFormatter
     private readonly OutputTemplate _template;
     private readonly SpectreTheme _theme;
     private readonly SecretMasker _masker;
+    private readonly LogLevel _minimumInlineLevel;
     private readonly Style _timestampStyle;
     private readonly Style _categoryStyle;
     private readonly Style _messageStyle;
@@ -24,12 +25,13 @@ internal sealed class EntryFormatter
     private readonly string _messageCloseTag;
     private readonly bool _allowMarkupInTemplate;
 
-    public EntryFormatter(OutputTemplate template, SpectreTheme theme, SecretMasker masker, bool allowMarkupInTemplate = false)
+    public EntryFormatter(OutputTemplate template, SpectreTheme theme, SecretMasker masker, bool allowMarkupInTemplate = false, LogLevel minimumInlineLevel = LogLevel.Trace)
     {
         _template = template;
         _theme = theme;
         _masker = masker;
         _allowMarkupInTemplate = allowMarkupInTemplate;
+        _minimumInlineLevel = minimumInlineLevel;
         _timestampStyle = theme.TimestampStyle;
         _categoryStyle = theme.CategoryStyle;
         _messageStyle = theme.MessageStyle;
@@ -54,21 +56,49 @@ internal sealed class EntryFormatter
     public string Format(LogEntry entry, List<string>? maskValueSink = null, bool suppressLevelSegment = false)
     {
         var builder = new StringBuilder(256);
-        foreach (var segment in _template.Segments)
+        var suppressLevel = suppressLevelSegment || entry.Level < _minimumInlineLevel;
+
+        // One-segment-deep lookahead: hold the most recent Literal so we can trim a trailing "[" from it
+        // when the immediately-following segment is a suppressed Level. This keeps the bracket-peel logic
+        // working on raw literal text instead of the post-escape doubled form in the StringBuilder.
+        TemplateSegment? pendingLiteral = null;
+        var dropLeadingCloseBracket = false;
+
+        var segments = _template.Segments;
+        for (var s = 0; s < segments.Length; s++)
         {
+            var segment = segments[s];
+
+            if (segment.Kind == SegmentKind.Level && suppressLevel)
+            {
+                if (pendingLiteral.HasValue)
+                {
+                    var (kept, trimmed) = TrimTrailingOpenBracket(pendingLiteral.Value.Literal ?? string.Empty);
+                    if (kept.Length > 0)
+                    {
+                        builder.Append(MarkupHelper.Escape(kept));
+                    }
+                    dropLeadingCloseBracket = trimmed;
+                    pendingLiteral = null;
+                }
+                continue;
+            }
+
+            if (pendingLiteral.HasValue)
+            {
+                FlushPendingLiteral(builder, pendingLiteral.Value, ref dropLeadingCloseBracket);
+                pendingLiteral = null;
+            }
+
             switch (segment.Kind)
             {
                 case SegmentKind.Literal:
-                    builder.Append(MarkupHelper.Escape(segment.Literal ?? string.Empty));
+                    pendingLiteral = segment;
                     break;
                 case SegmentKind.Timestamp:
                     MarkupHelper.AppendStyled(builder, FormatTimestamp(entry.Timestamp, segment.Format), _timestampStyle);
                     break;
                 case SegmentKind.Level:
-                    if (suppressLevelSegment)
-                    {
-                        break;
-                    }
                     MarkupHelper.AppendStyled(builder, FormatLevel(entry.Level, segment.Format), LevelStyle(entry.Level));
                     break;
                 case SegmentKind.Category:
@@ -123,7 +153,59 @@ internal sealed class EntryFormatter
             }
         }
 
+        if (pendingLiteral.HasValue)
+        {
+            FlushPendingLiteral(builder, pendingLiteral.Value, ref dropLeadingCloseBracket);
+        }
+
         return builder.ToString();
+    }
+
+    private static void FlushPendingLiteral(StringBuilder builder, TemplateSegment segment, ref bool dropLeadingCloseBracket)
+    {
+        var text = segment.Literal ?? string.Empty;
+        if (dropLeadingCloseBracket)
+        {
+            text = TrimLeadingCloseBracket(text);
+            dropLeadingCloseBracket = false;
+        }
+        if (text.Length > 0)
+        {
+            builder.Append(MarkupHelper.Escape(text));
+        }
+    }
+
+    private static (string Kept, bool Trimmed) TrimTrailingOpenBracket(string literal)
+    {
+        var end = literal.Length;
+        while (end > 0 && literal[end - 1] == ' ')
+        {
+            end--;
+        }
+        if (end > 0 && literal[end - 1] == '[')
+        {
+            return (literal[..(end - 1)], true);
+        }
+        return (literal, false);
+    }
+
+    private static string TrimLeadingCloseBracket(string literal)
+    {
+        var idx = 0;
+        while (idx < literal.Length && literal[idx] == ' ')
+        {
+            idx++;
+        }
+        if (idx >= literal.Length || literal[idx] != ']')
+        {
+            return literal;
+        }
+        idx++;
+        while (idx < literal.Length && literal[idx] == ' ')
+        {
+            idx++;
+        }
+        return idx >= literal.Length ? string.Empty : literal[idx..];
     }
 
     private Style LevelStyle(LogLevel level) => _levelStyles.TryGetValue(level, out var s) ? s : new Style();
