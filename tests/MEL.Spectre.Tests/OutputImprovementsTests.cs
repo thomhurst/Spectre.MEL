@@ -50,6 +50,49 @@ public class OutputImprovementsTests
     }
 
     [Test]
+    public async Task Ci_logs_do_not_wrap_on_supplied_narrow_console()
+    {
+        var message = new string('x', 500);
+        var (output, consoleWidth) = await CaptureAtWidthAsync(CiMode.GitHubActions, 80, message);
+
+        var lines = GetPhysicalLines(output);
+        await Assert.That(lines).Count().IsEqualTo(1);
+        await Assert.That(lines[0]).IsEqualTo(message);
+        await Assert.That(consoleWidth).IsEqualTo(80);
+    }
+
+    [Test]
+    public async Task Ci_logs_do_not_wrap_beyond_one_million_characters()
+    {
+        var message = new string('x', 1_000_001);
+        var (output, _) = await CaptureAtWidthAsync(CiMode.GitHubActions, 80, message);
+
+        var lines = GetPhysicalLines(output);
+        await Assert.That(lines).Count().IsEqualTo(1);
+        await Assert.That(lines[0].Length).IsEqualTo(message.Length);
+    }
+
+    [Test]
+    public async Task Non_ci_logs_still_follow_supplied_console_width()
+    {
+        var (output, _) = await CaptureAtWidthAsync(CiMode.Off, 80, new string('x', 500));
+
+        await Assert.That(GetPhysicalLines(output)).Count().IsGreaterThan(1);
+    }
+
+    [Test]
+    public async Task WrapInCi_uses_supplied_console_width()
+    {
+        var (output, _) = await CaptureAtWidthAsync(
+            CiMode.GitHubActions,
+            80,
+            new string('x', 500),
+            o => o.WrapInCi = true);
+
+        await Assert.That(GetPhysicalLines(output)).Count().IsGreaterThan(1);
+    }
+
+    [Test]
     public async Task MinimumInlineLevel_suppresses_info_level_and_strips_surrounding_brackets()
     {
         var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
@@ -219,5 +262,34 @@ public class OutputImprovementsTests
 
         await Assert.That(output).Contains("ordinary string");
         await Assert.That(output).DoesNotContain("***");
+    }
+
+    private static string[] GetPhysicalLines(string output) =>
+        output.Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+    private static async Task<(string Output, int ConsoleWidth)> CaptureAtWidthAsync(
+        CiMode mode,
+        int width,
+        string message,
+        Action<SpectreConsoleLoggerOptions>? configure = null)
+    {
+        var (console, services, logger) = LogTestHarness.Build(mode, o =>
+        {
+            o.Template = "{Message}";
+            configure?.Invoke(o);
+        });
+        console.Profile.Width = width;
+
+        try
+        {
+            logger.LogInformation("{Message}", message);
+        }
+        finally
+        {
+            await services.DisposeAsync();
+        }
+
+        return (console.Output, console.Profile.Width);
     }
 }

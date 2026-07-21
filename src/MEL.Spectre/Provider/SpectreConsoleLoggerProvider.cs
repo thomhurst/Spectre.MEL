@@ -35,11 +35,14 @@ internal sealed class SpectreConsoleLoggerProvider : ILoggerProvider, ISupportEx
         var levelAnnotations = new CiLevelAnnotationMap(_options.CiLevelAnnotations);
         var context = new RendererContext(formatter, masker, _options.ExceptionFormats, _options.SuppressInlineLevelOnCiAnnotation, levelAnnotations);
         var renderer = ResolveRenderer(ciMode, context);
+        var writerConsole = ciMode != CiMode.Off && !_options.WrapInCi
+            ? new NonWrappingAnsiConsole(console)
+            : console;
 
         _writer = _options.WriteMode == WriteMode.Synchronous
-            ? new SynchronousWriter(console, renderer)
+            ? new SynchronousWriter(writerConsole, renderer)
             : new BackgroundWriter(
-                console,
+                writerConsole,
                 renderer,
                 _options.ChannelCapacity,
                 _options.BackpressureMode,
