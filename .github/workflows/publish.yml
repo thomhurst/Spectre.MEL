@@ -9,7 +9,7 @@ on:
         default: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   publish:
@@ -69,3 +69,9 @@ jobs:
           --source "https://api.nuget.org/v3/index.json"
           --api-key ${{ secrets.NUGET_API_KEY }}
           --skip-duplicate
+
+      - name: Tag release
+        if: ${{ inputs.push }}
+        run: |
+          git tag "v${{ steps.gitversion.outputs.semVer }}"
+          git push origin "v${{ steps.gitversion.outputs.semVer }}"
