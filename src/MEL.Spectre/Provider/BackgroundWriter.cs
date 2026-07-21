@@ -15,6 +15,7 @@ internal sealed class BackgroundWriter : ILogEntryWriter
     private readonly object _completionGate = new();
     private readonly List<SequenceRange> _completedRanges = [];
     private readonly List<FlushWaiter> _flushWaiters = [];
+    private Exception? _terminalFailure;
     private long _lastSequence;
     private long _completedSequence;
     private long _droppedAfterDispose;
@@ -114,6 +115,11 @@ internal sealed class BackgroundWriter : ILogEntryWriter
             if (_completedSequence >= target)
             {
                 return Task.CompletedTask;
+            }
+
+            if (_terminalFailure is not null)
+            {
+                return Task.FromException(_terminalFailure);
             }
 
             var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -294,18 +300,24 @@ internal sealed class BackgroundWriter : ILogEntryWriter
         _completedRanges.Add(new SequenceRange(sequence, sequence));
     }
 
-    private void CompleteThroughLastSequence()
+    private void FailPendingFlushWaiters(Exception exception)
     {
-        List<TaskCompletionSource>? ready;
+        TaskCompletionSource[] pending;
         lock (_completionGate)
         {
-            _completedSequence = Math.Max(_completedSequence, Interlocked.Read(ref _lastSequence));
-            _completedRanges.Clear();
-
-            ready = TakeReadyFlushWaiters();
+            _terminalFailure ??= exception;
+            pending = new TaskCompletionSource[_flushWaiters.Count];
+            for (var i = 0; i < _flushWaiters.Count; i++)
+            {
+                pending[i] = _flushWaiters[i].Completion;
+            }
+            _flushWaiters.Clear();
         }
 
-        CompleteFlushWaiters(ready);
+        for (var i = 0; i < pending.Length; i++)
+        {
+            pending[i].TrySetException(exception);
+        }
     }
 
     private List<TaskCompletionSource>? TakeReadyFlushWaiters()
@@ -379,12 +391,13 @@ internal sealed class BackgroundWriter : ILogEntryWriter
         }
         catch (TimeoutException)
         {
+            var timeout = new TimeoutException($"MEL.Spectre: drain timeout after {_drainTimeout}; some log entries may be lost.");
             if (_drainTimeoutWarning.TrySet())
             {
-                LogWriterDiagnostics.Emit($"MEL.Spectre: drain timeout after {_drainTimeout}; some log entries may be lost.");
+                LogWriterDiagnostics.Emit(timeout.Message);
             }
 
-            CompleteThroughLastSequence();
+            FailPendingFlushWaiters(timeout);
 
             if (Monitor.TryEnter(SynchronizationLock))
             {

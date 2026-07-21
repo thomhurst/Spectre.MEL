@@ -127,7 +127,7 @@ public class WriteModeTests
     }
 
     [Test]
-    public async Task FlushAsync_completes_when_disposal_drain_times_out()
+    public async Task FlushAsync_faults_when_disposal_drain_times_out()
     {
         var console = new BlockingAnsiConsole();
         var services = BuildServices(console, configure: options =>
@@ -145,7 +145,9 @@ public class WriteModeTests
             var flush = control.FlushAsync();
             await services.DisposeAsync();
 
-            await flush.WaitAsync(TimeSpan.FromSeconds(1));
+            await Assert.That(flush.IsFaulted).IsTrue();
+            await Assert.That(async () => await flush).Throws<TimeoutException>();
+            await Assert.That(control.FlushAsync().IsFaulted).IsTrue();
         }
         finally
         {
