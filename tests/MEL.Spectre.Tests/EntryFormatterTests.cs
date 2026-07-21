@@ -10,18 +10,52 @@ namespace MEL.Spectre.Tests;
 public class EntryFormatterTests
 {
     [Test]
-    [Arguments(LogLevel.Trace, "TRAC")]
-    [Arguments(LogLevel.Debug, "DEBU")]
+    [Arguments(LogLevel.Trace, "TRCE")]
+    [Arguments(LogLevel.Debug, "DBUG")]
     [Arguments(LogLevel.Information, "INFO")]
     [Arguments(LogLevel.Warning, "WARN")]
-    [Arguments(LogLevel.Error, "ERRO")]
+    [Arguments(LogLevel.Error, "FAIL")]
     [Arguments(LogLevel.Critical, "CRIT")]
-    public async Task Level_u4_truncates_to_four_uppercase(LogLevel level, string expected)
+    public async Task Level_u4_uses_conventional_four_character_names(LogLevel level, string expected)
     {
         var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
         {
             logger.Log(level, "msg");
         }, o => o.Template = "[{Level:u4}] {Message}");
+
+        await Assert.That(output).Contains($"[{expected}] msg");
+    }
+
+    [Test]
+    [Arguments(LogLevel.Trace, "TRC")]
+    [Arguments(LogLevel.Debug, "DBG")]
+    [Arguments(LogLevel.Information, "INF")]
+    [Arguments(LogLevel.Warning, "WRN")]
+    [Arguments(LogLevel.Error, "ERR")]
+    [Arguments(LogLevel.Critical, "CRT")]
+    public async Task Level_u3_uses_conventional_three_character_names(LogLevel level, string expected)
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            logger.Log(level, "msg");
+        }, o => o.Template = "[{Level:u3}] {Message}");
+
+        await Assert.That(output).Contains($"[{expected}] msg");
+    }
+
+    [Test]
+    [Arguments(LogLevel.Trace, "trce")]
+    [Arguments(LogLevel.Debug, "dbug")]
+    [Arguments(LogLevel.Information, "info")]
+    [Arguments(LogLevel.Warning, "warn")]
+    [Arguments(LogLevel.Error, "fail")]
+    [Arguments(LogLevel.Critical, "crit")]
+    public async Task Level_l4_uses_lowercase_conventional_names(LogLevel level, string expected)
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            logger.Log(level, "msg");
+        }, o => o.Template = "[{Level:l4}] {Message}");
 
         await Assert.That(output).Contains($"[{expected}] msg");
     }
@@ -44,6 +78,23 @@ public class EntryFormatterTests
     }
 
     [Test]
+    [Arguments(LogLevel.Trace, "TRACE")]
+    [Arguments(LogLevel.Debug, "DEBUG")]
+    [Arguments(LogLevel.Information, "INFO")]
+    [Arguments(LogLevel.Warning, "WARN")]
+    [Arguments(LogLevel.Error, "ERROR")]
+    [Arguments(LogLevel.Critical, "CRIT")]
+    public async Task Level_without_format_preserves_existing_names(LogLevel level, string expected)
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            logger.Log(level, "msg");
+        }, o => o.Template = "[{Level}] {Message}");
+
+        await Assert.That(output).Contains($"[{expected}] msg");
+    }
+
+    [Test]
     public async Task Level_u6_pads_to_six_uppercase()
     {
         var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
@@ -55,14 +106,14 @@ public class EntryFormatterTests
     }
 
     [Test]
-    public async Task Level_l3_lowercases_and_truncates()
+    public async Task Level_l3_uses_lowercase_conventional_name()
     {
         var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
         {
             logger.LogWarning("msg");
         }, o => o.Template = "[{Level:l3}] {Message}");
 
-        await Assert.That(output).Contains("[war] msg");
+        await Assert.That(output).Contains("[wrn] msg");
     }
 
     [Test]

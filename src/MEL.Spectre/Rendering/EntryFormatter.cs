@@ -244,17 +244,31 @@ internal sealed class EntryFormatter
         }
 
         var prefix = format[0];
-        if (prefix == 'l' || prefix == 'L')
-        {
-            name = name.ToLowerInvariant();
-        }
-        else if (prefix != 'u' && prefix != 'U')
+        var lowercase = prefix == 'l' || prefix == 'L';
+        if (!lowercase && prefix != 'u' && prefix != 'U')
         {
             return name;
         }
 
         if (format.Length > 1 && int.TryParse(format.AsSpan(1), out var width))
         {
+            name = (level, width) switch
+            {
+                (LogLevel.Trace, 3) => "TRC",
+                (LogLevel.Debug, 3) => "DBG",
+                (LogLevel.Information, 3) => "INF",
+                (LogLevel.Warning, 3) => "WRN",
+                (LogLevel.Error, 3) => "ERR",
+                (LogLevel.Critical, 3) => "CRT",
+                (LogLevel.Trace, 4) => "TRCE",
+                (LogLevel.Debug, 4) => "DBUG",
+                (LogLevel.Information, 4) => "INFO",
+                (LogLevel.Warning, 4) => "WARN",
+                (LogLevel.Error, 4) => "FAIL",
+                (LogLevel.Critical, 4) => "CRIT",
+                _ => name,
+            };
+
             if (name.Length > width)
             {
                 name = name[..width];
@@ -265,7 +279,7 @@ internal sealed class EntryFormatter
             }
         }
 
-        return name;
+        return lowercase ? name.ToLowerInvariant() : name;
     }
 
     private static string FormatEventId(EventId id)
