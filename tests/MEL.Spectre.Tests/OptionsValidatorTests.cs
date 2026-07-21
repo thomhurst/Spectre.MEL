@@ -113,6 +113,14 @@ public class OptionsValidatorTests
     }
 
     [Test]
+    public async Task WriteMode_must_be_defined()
+    {
+        var result = Validator.Validate(null, new SpectreConsoleLoggerOptions { WriteMode = (WriteMode)999 });
+        await Assert.That(result.Failed).IsTrue();
+        await Assert.That(result.FailureMessage).Contains("WriteMode");
+    }
+
+    [Test]
     public async Task MaskedNamePatterns_must_compile_as_regex()
     {
         var options = new SpectreConsoleLoggerOptions();

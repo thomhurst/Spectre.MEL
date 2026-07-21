@@ -56,6 +56,11 @@ internal sealed class SpectreConsoleLoggerOptionsValidator : IValidateOptions<Sp
             failures.Add($"{nameof(options.EnqueueWaitTimeout)} must be greater than zero when BackpressureMode is Wait; use DropNewest or DropOldest for non-blocking semantics.");
         }
 
+        if (!Enum.IsDefined(options.WriteMode))
+        {
+            failures.Add($"{nameof(options.WriteMode)} is invalid.");
+        }
+
         if (options.Theme is null)
         {
             failures.Add($"{nameof(options.Theme)} must not be null.");

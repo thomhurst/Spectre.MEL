@@ -1,21 +1,18 @@
-using System.Diagnostics;
 using System.Threading.Channels;
 using Spectre.Console;
 using MEL.Spectre.Ci;
-using MEL.Spectre.Scopes;
 
 namespace MEL.Spectre.Provider;
 
-internal sealed class BackgroundWriter : IAsyncDisposable
+internal sealed class BackgroundWriter : ILogEntryWriter
 {
-    private readonly Channel<LogEntry> _channel;
-    private readonly IAnsiConsole _console;
-    private readonly ICiRenderer _renderer;
+    private readonly Channel<QueuedEntry> _channel;
+    private readonly LogEntryRenderer _entryRenderer;
     private readonly BackpressureMode _backpressureMode;
     private readonly TimeSpan _drainTimeout;
     private readonly TimeSpan _enqueueWaitTimeout;
     private readonly Task _consumerTask;
-    private readonly Stack<ScopeFrame> _activeScopes = new();
+    private readonly SequenceCompletionTracker _completionTracker = new();
     private long _droppedAfterDispose;
     private long _droppedBackpressure;
     private long _droppedChannelFault;
@@ -23,7 +20,6 @@ internal sealed class BackgroundWriter : IAsyncDisposable
     private OnceFlag _droppedBackpressureWarning;
     private OnceFlag _droppedChannelFaultWarning;
     private OnceFlag _drainTimeoutWarning;
-    private OnceFlag _scopesClosed;
 
     public BackgroundWriter(
         IAnsiConsole console,
@@ -33,8 +29,7 @@ internal sealed class BackgroundWriter : IAsyncDisposable
         TimeSpan drainTimeout,
         TimeSpan enqueueWaitTimeout)
     {
-        _console = console;
-        _renderer = renderer;
+        _entryRenderer = new LogEntryRenderer(console, renderer);
         _backpressureMode = backpressureMode;
         _drainTimeout = drainTimeout;
         _enqueueWaitTimeout = enqueueWaitTimeout;
@@ -46,16 +41,18 @@ internal sealed class BackgroundWriter : IAsyncDisposable
             _ => BoundedChannelFullMode.Wait,
         };
 
-        _channel = Channel.CreateBounded<LogEntry>(new BoundedChannelOptions(capacity)
+        _channel = Channel.CreateBounded<QueuedEntry>(new BoundedChannelOptions(capacity)
         {
             SingleReader = true,
             SingleWriter = false,
             AllowSynchronousContinuations = false,
             FullMode = fullMode,
-        });
+        }, OnItemDropped);
 
         _consumerTask = Task.Run(ConsumeAsync);
     }
+
+    public object SynchronizationLock { get; } = new();
 
     public long DroppedAfterDisposeCount => Interlocked.Read(ref _droppedAfterDispose);
 
@@ -63,9 +60,14 @@ internal sealed class BackgroundWriter : IAsyncDisposable
 
     public long DroppedChannelFaultCount => Interlocked.Read(ref _droppedChannelFault);
 
+    internal int PendingCompletionRangeCount => _completionTracker.PendingCompletionRangeCount;
+
+    internal int PendingFlushWaiterCount => _completionTracker.PendingFlushWaiterCount;
+
     public void Enqueue(LogEntry entry)
     {
-        if (_channel.Writer.TryWrite(entry))
+        var queued = new QueuedEntry(entry, _completionTracker.Begin());
+        if (_channel.Writer.TryWrite(queued))
         {
             return;
         }
@@ -73,19 +75,23 @@ internal sealed class BackgroundWriter : IAsyncDisposable
         if (_channel.Reader.Completion.IsCompleted)
         {
             RecordDropAfterDispose();
+            _completionTracker.Complete(queued.Sequence);
             return;
         }
 
         if (_backpressureMode != BackpressureMode.Wait)
         {
             RecordBackpressureDrop();
+            _completionTracker.Complete(queued.Sequence);
             return;
         }
 
-        WaitToWrite(entry);
+        WaitToWrite(queued);
     }
 
-    private void WaitToWrite(LogEntry entry)
+    public Task FlushAsync(CancellationToken cancellationToken) => _completionTracker.FlushAsync(cancellationToken);
+
+    private void WaitToWrite(QueuedEntry entry)
     {
         var deadline = _enqueueWaitTimeout > TimeSpan.Zero
             ? Environment.TickCount64 + (long)_enqueueWaitTimeout.TotalMilliseconds
@@ -97,12 +103,14 @@ internal sealed class BackgroundWriter : IAsyncDisposable
             if (_channel.Reader.Completion.IsCompleted)
             {
                 RecordDropAfterDispose();
+                _completionTracker.Complete(entry.Sequence);
                 return;
             }
 
             if (Environment.TickCount64 >= deadline)
             {
                 RecordBackpressureDrop();
+                _completionTracker.Complete(entry.Sequence);
                 return;
             }
 
@@ -117,17 +125,20 @@ internal sealed class BackgroundWriter : IAsyncDisposable
                     if (!_channel.Writer.WaitToWriteAsync(cts?.Token ?? CancellationToken.None).AsTask().GetAwaiter().GetResult())
                     {
                         RecordDropAfterDispose();
+                        _completionTracker.Complete(entry.Sequence);
                         return;
                     }
                 }
                 catch (OperationCanceledException)
                 {
                     RecordBackpressureDrop();
+                    _completionTracker.Complete(entry.Sequence);
                     return;
                 }
                 catch (Exception ex) when (!FatalExceptions.IsFatal(ex))
                 {
                     RecordChannelFault(ex);
+                    _completionTracker.Complete(entry.Sequence);
                     return;
                 }
             }
@@ -135,12 +146,56 @@ internal sealed class BackgroundWriter : IAsyncDisposable
         }
     }
 
+    private async Task ConsumeAsync()
+    {
+        try
+        {
+            await foreach (var queued in _channel.Reader.ReadAllAsync().ConfigureAwait(false))
+            {
+                try
+                {
+                    lock (SynchronizationLock)
+                    {
+                        _entryRenderer.Render(queued.Entry);
+                    }
+                }
+                finally
+                {
+                    _completionTracker.Complete(queued.Sequence);
+                }
+            }
+        }
+        catch (Exception ex) when (!FatalExceptions.IsFatal(ex))
+        {
+            LogWriterDiagnostics.Emit($"MEL.Spectre: consumer fault: {ex}");
+            _channel.Writer.TryComplete(ex);
+        }
+        finally
+        {
+            while (_channel.Reader.TryRead(out var queued))
+            {
+                _completionTracker.Complete(queued.Sequence);
+            }
+
+            lock (SynchronizationLock)
+            {
+                _entryRenderer.CloseAllScopes();
+            }
+        }
+    }
+
+    private void OnItemDropped(QueuedEntry entry)
+    {
+        RecordBackpressureDrop();
+        _completionTracker.Complete(entry.Sequence);
+    }
+
     private void RecordDropAfterDispose()
     {
         Interlocked.Increment(ref _droppedAfterDispose);
         if (_droppedAfterDisposeWarning.TrySet())
         {
-            EmitDiagnostic("MEL.Spectre: log entry dropped after provider disposal.");
+            LogWriterDiagnostics.Emit("MEL.Spectre: log entry dropped after provider disposal.");
         }
     }
 
@@ -149,7 +204,7 @@ internal sealed class BackgroundWriter : IAsyncDisposable
         Interlocked.Increment(ref _droppedBackpressure);
         if (_droppedBackpressureWarning.TrySet())
         {
-            EmitDiagnostic($"MEL.Spectre: log entry dropped due to backpressure ({_backpressureMode}); consider raising ChannelCapacity or EnqueueWaitTimeout.");
+            LogWriterDiagnostics.Emit($"MEL.Spectre: log entry dropped due to backpressure ({_backpressureMode}); consider raising ChannelCapacity or EnqueueWaitTimeout.");
         }
     }
 
@@ -158,102 +213,7 @@ internal sealed class BackgroundWriter : IAsyncDisposable
         Interlocked.Increment(ref _droppedChannelFault);
         if (_droppedChannelFaultWarning.TrySet())
         {
-            EmitDiagnostic($"MEL.Spectre: log entry dropped due to channel fault: {ex.GetType().Name}: {ex.Message}");
-        }
-    }
-
-    private async Task ConsumeAsync()
-    {
-        try
-        {
-            await foreach (var entry in _channel.Reader.ReadAllAsync().ConfigureAwait(false))
-            {
-                try
-                {
-                    ReconcileScopes(entry.Scopes);
-                    _renderer.RenderEntry(_console, entry, _activeScopes.Count);
-                }
-                catch (Exception ex) when (!FatalExceptions.IsFatal(ex))
-                {
-                    EmitDiagnostic($"MEL.Spectre: render fault: {ex}");
-                }
-            }
-        }
-        catch (Exception ex) when (!FatalExceptions.IsFatal(ex))
-        {
-            EmitDiagnostic($"MEL.Spectre: consumer fault: {ex}");
-        }
-        finally
-        {
-            TryCloseAllScopes();
-        }
-    }
-
-    private void TryCloseAllScopes()
-    {
-        if (!_scopesClosed.TrySet())
-        {
-            return;
-        }
-
-        try
-        {
-            while (_activeScopes.Count > 0)
-            {
-                var frame = _activeScopes.Pop();
-                _renderer.CloseScope(_console, frame, _activeScopes.Count);
-            }
-        }
-        catch (Exception ex) when (!FatalExceptions.IsFatal(ex))
-        {
-            EmitDiagnostic($"MEL.Spectre: scope close fault: {ex}");
-        }
-    }
-
-    private static void EmitDiagnostic(string message)
-    {
-        var written = false;
-        try
-        {
-            System.Console.Error.WriteLine(message);
-            written = true;
-        }
-        catch
-        {
-        }
-
-        if (!written)
-        {
-            try
-            {
-                Debug.WriteLine(message);
-            }
-            catch
-            {
-            }
-        }
-    }
-
-    private void ReconcileScopes(ScopeFrame[] incoming)
-    {
-        var current = _activeScopes.Reverse().ToArray();
-        var commonPrefix = 0;
-        var max = Math.Min(current.Length, incoming.Length);
-        while (commonPrefix < max && current[commonPrefix].Id == incoming[commonPrefix].Id)
-        {
-            commonPrefix++;
-        }
-
-        while (_activeScopes.Count > commonPrefix)
-        {
-            var frame = _activeScopes.Pop();
-            _renderer.CloseScope(_console, frame, _activeScopes.Count);
-        }
-
-        for (var i = commonPrefix; i < incoming.Length; i++)
-        {
-            _renderer.OpenScope(_console, incoming[i], _activeScopes.Count);
-            _activeScopes.Push(incoming[i]);
+            LogWriterDiagnostics.Emit($"MEL.Spectre: log entry dropped due to channel fault: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -270,11 +230,27 @@ internal sealed class BackgroundWriter : IAsyncDisposable
         }
         catch (TimeoutException)
         {
+            var timeout = new TimeoutException($"MEL.Spectre: drain timeout after {_drainTimeout}; some log entries may be lost.");
             if (_drainTimeoutWarning.TrySet())
             {
-                EmitDiagnostic($"MEL.Spectre: drain timeout after {_drainTimeout}; some log entries may be lost.");
+                LogWriterDiagnostics.Emit(timeout.Message);
             }
-            TryCloseAllScopes();
+
+            _completionTracker.Fail(timeout);
+
+            if (Monitor.TryEnter(SynchronizationLock))
+            {
+                try
+                {
+                    _entryRenderer.CloseAllScopes();
+                }
+                finally
+                {
+                    Monitor.Exit(SynchronizationLock);
+                }
+            }
         }
     }
+
+    private readonly record struct QueuedEntry(LogEntry Entry, long Sequence);
 }

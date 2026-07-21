@@ -136,6 +136,34 @@ The background writer uses a bounded `Channel<LogEntry>`. When full:
 Drops (backpressure or post-disposal) each emit a one-shot warning to
 `stderr`, falling back to `Debug.WriteLine` if `stderr` is unavailable.
 
+## Mixing direct console output with logging
+
+Background logging preserves log-entry order but returns from `ILogger.Log`
+before rendering. Flush queued entries before an ordering-sensitive direct
+write, and take the shared gate so direct output cannot tear a rendered line:
+
+```csharp
+var control = services.GetRequiredService<ISpectreConsoleLoggerControl>();
+var console = services.GetRequiredService<IAnsiConsole>();
+
+await control.FlushAsync(cancellationToken);
+lock (control.SynchronizationLock)
+{
+    console.WriteLine("::endgroup::");
+}
+```
+
+CI hosts that prefer strict same-thread ordering over logging throughput can
+skip the background channel entirely:
+
+```csharp
+builder.AddSpectreConsole(o => o.WriteMode = WriteMode.Synchronous);
+```
+
+In synchronous mode, an entry is rendered before `ILogger.Log` returns. Direct
+writes should still use `SynchronizationLock` when other threads may write to
+the same console.
+
 ## License
 
 MIT
