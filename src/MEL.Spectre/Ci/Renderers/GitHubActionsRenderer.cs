@@ -5,6 +5,9 @@ namespace MEL.Spectre.Ci.Renderers;
 
 internal sealed class GitHubActionsRenderer : CiRendererBase
 {
+    private const string AddMaskPrefix = "::add-mask::";
+    private const int MaskChunkLength = 1_000;
+
     public GitHubActionsRenderer(RendererContext context) : base(context)
     {
     }
@@ -15,7 +18,51 @@ internal sealed class GitHubActionsRenderer : CiRendererBase
 
     public override void EmitMask(IAnsiConsole console, string value)
     {
-        WriteCommand(console, $"::add-mask::{value}");
+        var writer = console.Profile.Out.Writer;
+        var remaining = value.AsSpan();
+
+        if (remaining.IsEmpty)
+        {
+            writer.WriteLine(AddMaskPrefix);
+            return;
+        }
+
+        while (!remaining.IsEmpty)
+        {
+            var newlineIndex = remaining.IndexOfAny('\r', '\n');
+            var line = newlineIndex >= 0 ? remaining[..newlineIndex] : remaining;
+            WriteMaskChunks(writer, line);
+
+            if (newlineIndex < 0)
+            {
+                break;
+            }
+
+            var newlineLength = remaining[newlineIndex] == '\r'
+                && newlineIndex + 1 < remaining.Length
+                && remaining[newlineIndex + 1] == '\n'
+                    ? 2
+                    : 1;
+            remaining = remaining[(newlineIndex + newlineLength)..];
+        }
+    }
+
+    private static void WriteMaskChunks(TextWriter writer, ReadOnlySpan<char> value)
+    {
+        while (!value.IsEmpty)
+        {
+            var chunkLength = Math.Min(MaskChunkLength, value.Length);
+            if (chunkLength < value.Length
+                && char.IsHighSurrogate(value[chunkLength - 1])
+                && char.IsLowSurrogate(value[chunkLength]))
+            {
+                chunkLength--;
+            }
+
+            writer.Write(AddMaskPrefix);
+            writer.WriteLine(value[..chunkLength]);
+            value = value[chunkLength..];
+        }
     }
 
     public override void OpenScope(IAnsiConsole console, ScopeFrame frame, int depth)
