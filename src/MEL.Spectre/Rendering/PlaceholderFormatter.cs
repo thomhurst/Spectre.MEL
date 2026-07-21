@@ -23,7 +23,7 @@ internal static class PlaceholderFormatter
         return value.ToString() ?? string.Empty;
     }
 
-    public static (string Rendered, string? UnmaskedValue, bool Masked) Render(Placeholder placeholder, string? format, SpectreTheme theme, SecretMasker masker)
+    public static (string Rendered, string? UnmaskedValue, bool Masked) Render(Placeholder placeholder, string? format, SpectreTheme theme, SecretMasker masker, EmbeddedAnsiMode embeddedAnsi = EmbeddedAnsiMode.Convert)
     {
         if (masker.ShouldMask(placeholder.Name))
         {
@@ -41,10 +41,11 @@ internal static class PlaceholderFormatter
         }
 
         var style = theme.Placeholders.Resolve(placeholder.Name, placeholder.Value);
+        var safe = AnsiSanitizer.EscapeAndSanitize(formatted, embeddedAnsi);
         if (MarkupHelper.IsPlain(style))
         {
-            return (Markup.Escape(formatted), null, false);
+            return (safe, null, false);
         }
-        return ($"[{style.ToMarkup()}]{Markup.Escape(formatted)}[/]", null, false);
+        return ($"[{style.ToMarkup()}]{safe}[/]", null, false);
     }
 }

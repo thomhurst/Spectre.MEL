@@ -24,13 +24,15 @@ internal sealed class EntryFormatter
     private readonly string _messageOpenTag;
     private readonly string _messageCloseTag;
     private readonly bool _allowMarkupInTemplate;
+    private readonly EmbeddedAnsiMode _embeddedAnsi;
 
-    public EntryFormatter(OutputTemplate template, SpectreTheme theme, SecretMasker masker, bool allowMarkupInTemplate = false, LogLevel minimumInlineLevel = LogLevel.Trace)
+    public EntryFormatter(OutputTemplate template, SpectreTheme theme, SecretMasker masker, bool allowMarkupInTemplate = false, LogLevel minimumInlineLevel = LogLevel.Trace, EmbeddedAnsiMode embeddedAnsi = EmbeddedAnsiMode.Convert)
     {
         _template = template;
         _theme = theme;
         _masker = masker;
         _allowMarkupInTemplate = allowMarkupInTemplate;
+        _embeddedAnsi = embeddedAnsi;
         _minimumInlineLevel = minimumInlineLevel;
         _timestampStyle = theme.TimestampStyle;
         _categoryStyle = theme.CategoryStyle;
@@ -112,7 +114,7 @@ internal sealed class EntryFormatter
                     break;
                 case SegmentKind.Message:
                     builder.Append(_messageOpenTag);
-                    builder.Append(MessageFormatter.Render(entry.OriginalFormat, entry.Message, entry.Placeholders, _theme, _masker, maskValueSink, _allowMarkupInTemplate));
+                    builder.Append(MessageFormatter.Render(entry.OriginalFormat, entry.Message, entry.Placeholders, _theme, _masker, maskValueSink, _allowMarkupInTemplate, _embeddedAnsi));
                     builder.Append(_messageCloseTag);
                     break;
                 case SegmentKind.NewLine:
@@ -146,7 +148,7 @@ internal sealed class EntryFormatter
                     var ph = FindCustom(entry.Placeholders, segment.Name!);
                     if (ph.HasValue)
                     {
-                        var (rendered, _, _) = PlaceholderFormatter.Render(ph.Value, segment.Format, _theme, _masker);
+                        var (rendered, _, _) = PlaceholderFormatter.Render(ph.Value, segment.Format, _theme, _masker, _embeddedAnsi);
                         builder.Append(rendered);
                     }
                     break;
@@ -164,7 +166,7 @@ internal sealed class EntryFormatter
     public string FormatMessage(LogEntry entry, List<string>? maskValueSink = null) =>
         string.Concat(
             _messageOpenTag,
-            MessageFormatter.Render(entry.OriginalFormat, entry.Message, entry.Placeholders, _theme, _masker, maskValueSink, _allowMarkupInTemplate),
+            MessageFormatter.Render(entry.OriginalFormat, entry.Message, entry.Placeholders, _theme, _masker, maskValueSink, _allowMarkupInTemplate, _embeddedAnsi),
             _messageCloseTag);
 
     private static void FlushPendingLiteral(StringBuilder builder, TemplateSegment segment, ref bool dropLeadingCloseBracket)

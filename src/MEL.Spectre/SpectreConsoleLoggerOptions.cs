@@ -42,6 +42,16 @@ public sealed class SpectreConsoleLoggerOptions
     public bool AllowMarkupInMessageTemplate { get; set; }
 
     /// <summary>
+    /// Controls how raw ANSI/VT escape sequences embedded in message content (e.g. relayed stdout from
+    /// child processes) are handled. Defaults to <see cref="EmbeddedAnsiMode.Convert"/>: SGR color/style
+    /// sequences are translated into Spectre markup so embedded colors render correctly nested inside the
+    /// theme's message style, and all other control sequences are removed. Use
+    /// <see cref="EmbeddedAnsiMode.Strip"/> to drop every sequence, or
+    /// <see cref="EmbeddedAnsiMode.Passthrough"/> to restore the previous raw behaviour.
+    /// </summary>
+    public EmbeddedAnsiMode EmbeddedAnsi { get; set; } = EmbeddedAnsiMode.Convert;
+
+    /// <summary>
     /// When true, entries emitted as native CI annotations use only the rendered <c>{Message}</c> payload.
     /// This avoids duplicate severity and dangling separators from the full output template. Defaults to true;
     /// set to false to retain the complete template, including its inline level.
