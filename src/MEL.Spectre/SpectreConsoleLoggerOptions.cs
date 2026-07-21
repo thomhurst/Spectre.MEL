@@ -44,6 +44,19 @@ public sealed class SpectreConsoleLoggerOptions
     /// </summary>
     public bool SuppressInlineLevelOnCiAnnotation { get; set; }
 
+    /// <summary>
+    /// Maps log levels to native CI annotations. Critical and error entries emit error annotations,
+    /// and warning entries emit warning annotations by default. Debug and trace entries remain ordinary
+    /// visible log lines; map them to <see cref="CiAnnotation.Debug"/> to opt into runner debug annotations.
+    /// Snapshotted at provider construction.
+    /// </summary>
+    public Dictionary<LogLevel, CiAnnotation?> CiLevelAnnotations { get; set; } = new()
+    {
+        [LogLevel.Critical] = CiAnnotation.Error,
+        [LogLevel.Error] = CiAnnotation.Error,
+        [LogLevel.Warning] = CiAnnotation.Warning,
+    };
+
     public ExceptionFormats ExceptionFormats { get; set; } =
         ExceptionFormats.ShortenPaths | ExceptionFormats.ShortenTypes | ExceptionFormats.ShortenMethods | ExceptionFormats.ShowLinks;
 
