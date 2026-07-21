@@ -15,7 +15,7 @@ namespace MEL.Spectre.Provider;
 internal sealed class SpectreConsoleLoggerProvider : ILoggerProvider, ISupportExternalScope, IAsyncDisposable
 {
     private readonly ConcurrentDictionary<string, SpectreConsoleLogger> _loggers = new(StringComparer.Ordinal);
-    private readonly BackgroundWriter _writer;
+    private readonly ILogEntryWriter _writer;
     private readonly SpectreConsoleLoggerOptions _options;
     private volatile IExternalScopeProvider? _scopeProvider;
     private int _disposed;
@@ -36,14 +36,20 @@ internal sealed class SpectreConsoleLoggerProvider : ILoggerProvider, ISupportEx
         var context = new RendererContext(formatter, masker, _options.ExceptionFormats, _options.SuppressInlineLevelOnCiAnnotation, levelAnnotations);
         var renderer = ResolveRenderer(ciMode, context);
 
-        _writer = new BackgroundWriter(
-            console,
-            renderer,
-            _options.ChannelCapacity,
-            _options.BackpressureMode,
-            _options.ShutdownDrainTimeout,
-            _options.EnqueueWaitTimeout);
+        _writer = _options.WriteMode == WriteMode.Synchronous
+            ? new SynchronousWriter(console, renderer)
+            : new BackgroundWriter(
+                console,
+                renderer,
+                _options.ChannelCapacity,
+                _options.BackpressureMode,
+                _options.ShutdownDrainTimeout,
+                _options.EnqueueWaitTimeout);
     }
+
+    internal object SynchronizationLock => _writer.SynchronizationLock;
+
+    internal Task FlushAsync(CancellationToken cancellationToken) => _writer.FlushAsync(cancellationToken);
 
     public ILogger CreateLogger(string categoryName)
     {

@@ -64,6 +64,13 @@ public sealed class SpectreConsoleLoggerOptions
 
     public BackpressureMode BackpressureMode { get; set; } = BackpressureMode.Wait;
 
+    /// <summary>
+    /// Controls whether log entries render on the background consumer or inline before <c>ILogger.Log</c>
+    /// returns. Synchronous mode provides strict same-thread ordering for CI hosts that mix logging with
+    /// direct console output.
+    /// </summary>
+    public WriteMode WriteMode { get; set; } = WriteMode.Background;
+
     public int MaskedValueCacheCapacity { get; set; } = 256;
 
     /// <summary>

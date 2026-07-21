@@ -8,14 +8,14 @@ namespace MEL.Spectre.Provider;
 internal sealed class SpectreConsoleLogger : ILogger
 {
     private readonly string _category;
-    private readonly BackgroundWriter _writer;
+    private readonly ILogEntryWriter _writer;
     private readonly Func<IExternalScopeProvider?> _scopeProviderAccessor;
     private readonly bool _includeScopes;
     private readonly bool _includeActivity;
 
     public SpectreConsoleLogger(
         string category,
-        BackgroundWriter writer,
+        ILogEntryWriter writer,
         Func<IExternalScopeProvider?> scopeProviderAccessor,
         bool includeScopes,
         bool includeActivity)
