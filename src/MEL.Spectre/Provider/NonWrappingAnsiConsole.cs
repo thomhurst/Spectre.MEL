@@ -5,7 +5,7 @@ namespace MEL.Spectre.Provider;
 
 internal sealed class NonWrappingAnsiConsole : IAnsiConsole
 {
-    private const int UnwrappedWidth = 1_000_000;
+    private const int UnwrappedWidth = int.MaxValue;
     private readonly IAnsiConsole _inner;
 
     public NonWrappingAnsiConsole(IAnsiConsole inner)

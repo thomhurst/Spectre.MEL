@@ -62,6 +62,17 @@ public class OutputImprovementsTests
     }
 
     [Test]
+    public async Task Ci_logs_do_not_wrap_beyond_one_million_characters()
+    {
+        var message = new string('x', 1_000_001);
+        var (output, _) = await CaptureAtWidthAsync(CiMode.GitHubActions, 80, message);
+
+        var lines = GetPhysicalLines(output);
+        await Assert.That(lines).Count().IsEqualTo(1);
+        await Assert.That(lines[0].Length).IsEqualTo(message.Length);
+    }
+
+    [Test]
     public async Task Non_ci_logs_still_follow_supplied_console_width()
     {
         var (output, _) = await CaptureAtWidthAsync(CiMode.Off, 80, new string('x', 500));
