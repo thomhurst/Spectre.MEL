@@ -137,6 +137,27 @@ builder.AddSpectreConsole(o =>
 > after the provider starts are ignored. Clear either mutable list during
 > configuration to disable its defaults.
 
+## Embedded ANSI from child processes
+
+Relayed stdout from tools that style their own output (`dotnet`, `npm`, ...)
+often contains raw ANSI escape sequences. An embedded reset (`ESC[0m`) would
+terminate the logger's own styling mid-line, leaving the rest of the entry
+unstyled. By default MEL.Spectre converts embedded SGR color/style sequences
+into Spectre markup: the child process's colors are preserved, an embedded
+reset closes only the child's style, and the theme's outer style resumes
+afterwards. All other control sequences (cursor movement, screen clearing,
+OSC titles and hyperlinks, ...) are removed, which also keeps native CI
+annotation payloads (e.g. `::error::`) free of control codes.
+
+```csharp
+builder.AddSpectreConsole(o => o.EmbeddedAnsi = EmbeddedAnsiMode.Strip);        // discard child styling entirely
+builder.AddSpectreConsole(o => o.EmbeddedAnsi = EmbeddedAnsiMode.Passthrough);  // raw sequences, previous behaviour
+```
+
+Sanitization only engages for message content that actually contains an
+escape character; plain messages (including multiline `\r\n` text) pass
+through unchanged.
+
 ## Backpressure
 
 The background writer uses a bounded `Channel<LogEntry>`. When full:
