@@ -95,10 +95,20 @@ public sealed class SpectreConsoleLoggerOptions
 
     /// <summary>
     /// Regex patterns evaluated against placeholder string values to decide masking. Catches secrets logged
-    /// through innocuously-named placeholders (e.g. <c>{Url}</c> containing an embedded token). Defaults to
-    /// empty — opt in by adding patterns. Snapshotted at provider construction.
+    /// through innocuously-named placeholders (e.g. <c>{Url}</c> containing an embedded token). Defaults cover
+    /// well-known GitHub, GitLab, AWS, Slack, JWT, and private-key formats. Clear or extend the mutable list
+    /// during configuration as needed. Snapshotted at provider construction.
     /// </summary>
-    public List<string> MaskedValuePatterns { get; } = new();
+    public List<string> MaskedValuePatterns { get; } =
+    [
+        @"(?-i:(?<![A-Za-z0-9])gh[pousr]_[A-Za-z0-9]{36}(?![A-Za-z0-9]))",
+        @"(?-i:(?<![A-Za-z0-9_])github_pat_[A-Za-z0-9_]{22,}(?![A-Za-z0-9_]))",
+        @"(?-i:(?<![A-Za-z0-9_-])glpat-[A-Za-z0-9_-]{20,}(?![A-Za-z0-9_-]))",
+        @"(?-i:(?<![0-9A-Z])AKIA[0-9A-Z]{16}(?![0-9A-Z]))",
+        @"(?-i:(?<![A-Za-z0-9-])xox[baprs]-[A-Za-z0-9-]{10,}(?![A-Za-z0-9-]))",
+        @"(?-i:(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}(?![A-Za-z0-9_-]))",
+        @"(?-i:-----BEGIN [A-Z ]*PRIVATE KEY-----)",
+    ];
 
     public IAnsiConsole? Console { get; set; }
 
