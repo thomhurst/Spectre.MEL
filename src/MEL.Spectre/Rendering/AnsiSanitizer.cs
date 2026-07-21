@@ -14,7 +14,14 @@ internal static class AnsiSanitizer
     internal const char EscapeChar = '\x1b';
     internal const char CsiChar = '\x9b'; // single-character (8-bit) CSI introducer
 
-    public static bool ContainsAnsi(string text) => text.AsSpan().IndexOfAny(EscapeChar, CsiChar) >= 0;
+    public static bool ContainsAnsi(string text)
+    {
+        var span = text.AsSpan();
+        return span.IndexOf(EscapeChar) >= 0 || span.IndexOfAnyInRange('\x90', '\x9f') >= 0;
+    }
+
+    /// <summary>ESC or any C1 control that introduces (or terminates) a VT sequence.</summary>
+    internal static bool IsSequenceIntroducer(char c) => c == EscapeChar || (c >= '\x90' && c <= '\x9f');
 
     /// <summary>
     /// Markup-escapes <paramref name="text"/> while removing embedded control sequences, or — in
@@ -36,7 +43,7 @@ internal static class AnsiSanitizer
         while (i < text.Length)
         {
             var c = text[i];
-            if (c == EscapeChar || c == CsiChar)
+            if (IsSequenceIntroducer(c))
             {
                 state.ConsumeSequence(text, ref i, convert);
                 continue;
@@ -85,10 +92,21 @@ internal struct AnsiMarkupState
     /// </summary>
     public void ConsumeSequence(string text, ref int i, bool convert)
     {
-        if (text[i] == AnsiSanitizer.CsiChar)
+        switch (text[i])
         {
-            ConsumeControlSequence(text, ref i, i + 1, convert);
-            return;
+            case AnsiSanitizer.CsiChar:
+                ConsumeControlSequence(text, ref i, i + 1, convert);
+                return;
+            case '\x90': // C1 DCS
+            case '\x98': // C1 SOS
+            case '\x9d': // C1 OSC
+            case '\x9e': // C1 PM
+            case '\x9f': // C1 APC
+                i = SkipStringSequence(text, i + 1);
+                return;
+            case >= '\x90' and <= '\x9f': // other C1 controls (incl. a stray ST) — drop
+                i++;
+                return;
         }
 
         if (i + 1 >= text.Length)
@@ -193,8 +211,11 @@ internal struct AnsiMarkupState
             return;
         }
 
-        // SGR parameters are small integers separated by ';' (or ':' in some emitters' extended colors).
+        // SGR parameters are small integers separated by ';', or ':' in the ITU T.416 extended-color
+        // form (e.g. 38:2::255:100:0 with an empty color-space field). Which separator preceded each
+        // value is tracked so both forms decode correctly.
         Span<int> values = stackalloc int[32];
+        Span<bool> colonBefore = stackalloc bool[32];
         var count = 0;
         var current = 0;
         foreach (var c in parameters)
@@ -211,6 +232,10 @@ internal struct AnsiMarkupState
                 }
                 values[count++] = current;
                 current = 0;
+                if (count < colonBefore.Length)
+                {
+                    colonBefore[count] = c == ':';
+                }
             }
             else
             {
@@ -223,10 +248,10 @@ internal struct AnsiMarkupState
         }
         values[count++] = current;
 
-        Apply(values[..count]);
+        Apply(values[..count], colonBefore[..count]);
     }
 
-    private void Apply(ReadOnlySpan<int> values)
+    private void Apply(ReadOnlySpan<int> values, ReadOnlySpan<bool> colonBefore)
     {
         for (var k = 0; k < values.Length; k++)
         {
@@ -250,10 +275,10 @@ internal struct AnsiMarkupState
                 case 28: _decoration &= ~Decoration.Conceal; break;
                 case 29: _decoration &= ~Decoration.Strikethrough; break;
                 case >= 30 and <= 37: _foreground = Color.FromInt32(values[k] - 30); break;
-                case 38: k = ReadExtendedColor(values, k, ref _foreground); break;
+                case 38: k = ReadExtendedColor(values, colonBefore, k, ref _foreground); break;
                 case 39: _foreground = null; break;
                 case >= 40 and <= 47: _background = Color.FromInt32(values[k] - 40); break;
-                case 48: k = ReadExtendedColor(values, k, ref _background); break;
+                case 48: k = ReadExtendedColor(values, colonBefore, k, ref _background); break;
                 case 49: _background = null; break;
                 case >= 90 and <= 97: _foreground = Color.FromInt32(values[k] - 90 + 8); break;
                 case >= 100 and <= 107: _background = Color.FromInt32(values[k] - 100 + 8); break;
@@ -261,11 +286,16 @@ internal struct AnsiMarkupState
         }
     }
 
-    private static int ReadExtendedColor(ReadOnlySpan<int> values, int k, ref Color? target)
+    private static int ReadExtendedColor(ReadOnlySpan<int> values, ReadOnlySpan<bool> colonBefore, int k, ref Color? target)
     {
         if (k + 1 >= values.Length)
         {
             return values.Length;
+        }
+
+        if (colonBefore[k + 1])
+        {
+            return ReadColonFormExtendedColor(values, colonBefore, k, ref target);
         }
 
         switch (values[k + 1])
@@ -282,6 +312,37 @@ internal struct AnsiMarkupState
             default:
                 return values.Length; // malformed extended color — skip the remaining parameters
         }
+    }
+
+    private static int ReadColonFormExtendedColor(ReadOnlySpan<int> values, ReadOnlySpan<bool> colonBefore, int k, ref Color? target)
+    {
+        // ITU T.416 colon form: 38:5:n, 38:2:R:G:B, or 38:2:<color-space>:R:G:B (color-space usually
+        // empty). The colon-joined run is self-delimiting, so trailing extras (tolerance, alpha) are
+        // consumed with it and later ';'-separated parameters still apply.
+        var end = k + 1;
+        while (end + 1 < values.Length && colonBefore[end + 1])
+        {
+            end++;
+        }
+        var argCount = end - (k + 1);
+
+        switch (values[k + 1])
+        {
+            case 5 when argCount >= 1:
+                if (values[k + 2] <= 255)
+                {
+                    target = Color.FromInt32(values[k + 2]);
+                }
+                break;
+            case 2 when argCount >= 4: // color-space id present — skip it
+                target = new Color(ToByte(values[k + 3]), ToByte(values[k + 4]), ToByte(values[k + 5]));
+                break;
+            case 2 when argCount == 3:
+                target = new Color(ToByte(values[k + 2]), ToByte(values[k + 3]), ToByte(values[k + 4]));
+                break;
+        }
+
+        return end;
     }
 
     private static byte ToByte(int value) => (byte)Math.Clamp(value, 0, 255);

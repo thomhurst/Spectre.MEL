@@ -56,6 +56,45 @@ public class AnsiSanitizerTests
     }
 
     [Test]
+    public async Task Convert_translates_colon_form_extended_colors()
+    {
+        var expected = $"[{new Style(new Color(255, 100, 0)).ToMarkup()}]text[/]";
+
+        // ITU T.416 form with an empty color-space field
+        var withColorSpace = AnsiSanitizer.EscapeAndSanitize($"{Esc}[38:2::255:100:0mtext{Esc}[0m", EmbeddedAnsiMode.Convert);
+        await Assert.That(withColorSpace).IsEqualTo(expected);
+
+        var withoutColorSpace = AnsiSanitizer.EscapeAndSanitize($"{Esc}[38:2:255:100:0mtext{Esc}[0m", EmbeddedAnsiMode.Convert);
+        await Assert.That(withoutColorSpace).IsEqualTo(expected);
+
+        var palette = AnsiSanitizer.EscapeAndSanitize($"{Esc}[38:5:229mtext{Esc}[0m", EmbeddedAnsiMode.Convert);
+        await Assert.That(palette).IsEqualTo($"[{new Style(Color.FromInt32(229)).ToMarkup()}]text[/]");
+
+        // colon run is self-delimiting: the following ';'-separated parameter still applies
+        var mixed = AnsiSanitizer.EscapeAndSanitize($"{Esc}[38:5:229;1mtext{Esc}[0m", EmbeddedAnsiMode.Convert);
+        await Assert.That(mixed).IsEqualTo($"[{new Style(Color.FromInt32(229), decoration: Decoration.Bold).ToMarkup()}]text[/]");
+    }
+
+    [Test]
+    public async Task Eight_bit_c1_sequences_are_handled()
+    {
+        // 8-bit CSI SGR converts like its ESC[ equivalent
+        var csi = AnsiSanitizer.EscapeAndSanitize("\u009b32mgreen\u009b0m", EmbeddedAnsiMode.Convert);
+        await Assert.That(csi).IsEqualTo($"[{new Style(Color.FromInt32(2)).ToMarkup()}]green[/]");
+
+        // C1 OSC / DCS payloads run to the C1 ST and are removed entirely
+        var osc = AnsiSanitizer.EscapeAndSanitize("\u009d0;title\u009cafter", EmbeddedAnsiMode.Convert);
+        await Assert.That(osc).IsEqualTo("after");
+
+        var dcs = AnsiSanitizer.EscapeAndSanitize("\u0090payload\u009cafter", EmbeddedAnsiMode.Convert);
+        await Assert.That(dcs).IsEqualTo("after");
+
+        // a stray ST without an opener is dropped
+        var strayTerminator = AnsiSanitizer.EscapeAndSanitize("a\u009cb", EmbeddedAnsiMode.Convert);
+        await Assert.That(strayTerminator).IsEqualTo("ab");
+    }
+
+    [Test]
     public async Task Convert_produces_balanced_markup_for_issue_sample()
     {
         var text = $"{Esc}[38;5;229m{Esc}[32mTest run summary: Passed!{Esc}[90m - {Esc}[m/home/runner/work";

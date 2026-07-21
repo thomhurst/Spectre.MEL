@@ -103,6 +103,17 @@ public class MessageFormatterTests
         _ = new global::Spectre.Console.Markup(result);
     }
 
+    [Test]
+    public async Task Unmatched_brace_tail_keeps_markup_when_opted_in()
+    {
+        var theme = SpectreTheme.Monochrome;
+        var masker = NewMasker();
+
+        var result = MessageFormatter.Render("{unmatched [bold]text[/]", "fb", [], theme, masker, allowMarkupInTemplate: true);
+
+        await Assert.That(result).IsEqualTo("{unmatched [bold]text[/]");
+    }
+
     private sealed class BracketyToString
     {
         public override string ToString() => "[REDACTED]";

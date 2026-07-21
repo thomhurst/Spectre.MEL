@@ -42,7 +42,7 @@ internal static class MessageFormatter
                 if (end < 0)
                 {
                     ansi.BeforeAppend(builder);
-                    builder.Append(AnsiSanitizer.EscapeAndSanitize(originalFormat[i..], embeddedAnsi));
+                    builder.Append(AnsiSanitizer.EscapeAndSanitize(originalFormat[i..], embeddedAnsi, escapeMarkup: !allowMarkupInTemplate));
                     break;
                 }
 
@@ -93,7 +93,7 @@ internal static class MessageFormatter
                 continue;
             }
 
-            if (c == AnsiSanitizer.EscapeChar || c == AnsiSanitizer.CsiChar)
+            if (AnsiSanitizer.IsSequenceIntroducer(c))
             {
                 if (sanitizeAnsi)
                 {
