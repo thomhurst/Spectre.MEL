@@ -40,9 +40,9 @@ public sealed class SpectreConsoleLoggerOptions
     /// as a native CI annotation (such as <c>::warning::</c> for GitHub Actions). Avoids duplicate severity
     /// markers on the same line. If the level segment in the template is wrapped by a tight bracket pair such as
     /// <c>[{Level:u}] {Message}</c>, the surrounding brackets and inner spacing are stripped too so the line does
-    /// not render as an empty <c>[]</c>. Defaults to false to preserve existing rendering.
+    /// not render as an empty <c>[]</c>. Defaults to true; set to false to retain the inline level.
     /// </summary>
-    public bool SuppressInlineLevelOnCiAnnotation { get; set; }
+    public bool SuppressInlineLevelOnCiAnnotation { get; set; } = true;
 
     /// <summary>
     /// Maps log levels to native CI annotations. Critical and error entries emit error annotations,

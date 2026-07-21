@@ -55,7 +55,7 @@ internal abstract class CiRendererBase : ICiRenderer
         if (prefix is not null)
         {
             var plainLine = Markup.Remove(indent is null ? markup : indent + markup);
-            WriteCommand(console, prefix + plainLine);
+            WriteCommand(console, prefix + EscapeLevelAnnotationPayload(plainLine));
         }
         else
         {
@@ -76,6 +76,8 @@ internal abstract class CiRendererBase : ICiRenderer
     protected CiAnnotation? GetLevelAnnotation(LogLevel level) => _context.LevelAnnotations.Get(level);
 
     protected virtual string? BuildLevelAnnotationPrefix(CiAnnotation annotation) => null;
+
+    protected virtual string EscapeLevelAnnotationPayload(string payload) => payload;
 
     protected virtual string? BuildIndent(int depth) => null;
 

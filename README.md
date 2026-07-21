@@ -106,6 +106,12 @@ builder.AddSpectreConsole(o =>
 });
 ```
 
+Native annotation payloads are rendered as plain text. Their inline level
+segment is suppressed by default because the runner already displays the
+severity; set `SuppressInlineLevelOnCiAnnotation = false` to keep it. GitHub
+Actions annotation payloads also escape percent signs and embedded newlines so
+each entry remains one complete workflow command.
+
 ## Secret masking
 
 Placeholders whose name matches any of the configured regex patterns are

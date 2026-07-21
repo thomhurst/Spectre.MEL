@@ -221,7 +221,7 @@ public class CiRendererTests
     }
 
     [Test]
-    public async Task SuppressInlineLevelOnCiAnnotation_off_by_default_keeps_level_tag()
+    public async Task Ci_annotations_suppress_inline_level_by_default()
     {
         var output = await LogTestHarness.CaptureAsync(CiMode.GitHubActions, logger =>
         {
@@ -229,7 +229,58 @@ public class CiRendererTests
         }, o => o.Template = "[{Level:u5}] {Message}");
 
         await Assert.That(output).Contains("::warning::");
-        await Assert.That(output).Contains("[WARN ]");
+        await Assert.That(output).DoesNotContain("[WARN ]");
+        await Assert.That(output).Contains("::warning::watch out");
+    }
+
+    [Test]
+    public async Task Ci_annotation_level_suppression_can_be_disabled()
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.GitHubActions, logger =>
+        {
+            logger.LogWarning("watch out");
+        }, o =>
+        {
+            o.SuppressInlineLevelOnCiAnnotation = false;
+            o.Template = "[{Level:u5}] {Message}";
+        });
+
+        await Assert.That(output).Contains("::warning::[WARN ] watch out");
+    }
+
+    [Test]
+    public async Task GitHubActions_annotation_payload_is_plain_text()
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.GitHubActions, logger =>
+        {
+            logger.LogWarning("[red]⚠[/] unregistered modules");
+        }, o =>
+        {
+            o.AllowMarkupInMessageTemplate = true;
+            o.Theme = MEL.Spectre.Theme.SpectreTheme.Default;
+            o.Template = "[{Level:u5}] {Message}";
+        });
+
+        await Assert.That(output).Contains("::warning::⚠ unregistered modules");
+        await Assert.That(output).DoesNotContain("\u001b");
+        await Assert.That(output).DoesNotContain("[red]");
+        await Assert.That(output).DoesNotContain("[WARN ]");
+    }
+
+    [Test]
+    public async Task GitHubActions_multiline_annotation_is_one_escaped_command()
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.GitHubActions, logger =>
+        {
+            logger.LogWarning("first 100%\r\nsecond\nthird");
+        }, o => o.Template = "{Message}");
+
+        var annotationLines = GetPhysicalLines(output)
+            .Where(line => line.StartsWith("::warning::", StringComparison.Ordinal))
+            .ToArray();
+
+        await Assert.That(annotationLines).Count().IsEqualTo(1);
+        await Assert.That(annotationLines[0]).IsEqualTo("::warning::first 100%25%0D%0Asecond%0Athird");
     }
 
     [Test]
