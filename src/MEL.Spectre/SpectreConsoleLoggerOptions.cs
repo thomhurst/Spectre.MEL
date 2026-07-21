@@ -24,6 +24,12 @@ public sealed class SpectreConsoleLoggerOptions
 
     public InteractivityMode InteractivityMode { get; set; } = InteractivityMode.Auto;
 
+    /// <summary>
+    /// When true, CI log entries follow the configured console width. Defaults to false so CI log lines are
+    /// rendered without wrapping, including when a consumer-supplied console has a narrow profile.
+    /// </summary>
+    public bool WrapInCi { get; set; }
+
     public bool IncludeScopes { get; set; } = true;
 
     public bool IncludeActivity { get; set; } = true;

@@ -93,6 +93,9 @@ builder.AddSpectreConsole(o =>
 });
 ```
 
+CI log entries render without wrapping by default, even when a consumer-supplied
+console has a narrow profile. Set `WrapInCi = true` to follow that console width.
+
 Debug and trace entries are ordinary visible log lines by default. Native debug
 annotations are often hidden by CI runners; for example, GitHub Actions hides
 `::debug::` unless `ACTIONS_STEP_DEBUG=true`. Consumers who enable that runner
