@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using Spectre.Console;
 using MEL.Spectre.Provider;
 using MEL.Spectre.Scopes;
@@ -27,9 +26,10 @@ internal sealed class TeamCityRenderer : CiRendererBase
 
     public override void RenderEntry(IAnsiConsole console, LogEntry entry, int scopeDepth)
     {
-        if (entry.Level >= LogLevel.Warning)
+        var annotation = GetLevelAnnotation(entry.Level);
+        if (annotation is CiAnnotation.Error or CiAnnotation.Warning)
         {
-            var status = entry.Level >= LogLevel.Error ? "ERROR" : "WARNING";
+            var status = annotation == CiAnnotation.Error ? "ERROR" : "WARNING";
             console.WriteLine($"##teamcity[message text='{Escape(entry.Message)}' status='{status}']");
         }
         base.RenderEntry(console, entry, scopeDepth);

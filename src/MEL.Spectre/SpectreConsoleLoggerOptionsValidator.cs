@@ -61,6 +61,26 @@ internal sealed class SpectreConsoleLoggerOptionsValidator : IValidateOptions<Sp
             failures.Add($"{nameof(options.Theme)} must not be null.");
         }
 
+        if (options.CiLevelAnnotations is null)
+        {
+            failures.Add($"{nameof(options.CiLevelAnnotations)} must not be null.");
+        }
+        else
+        {
+            foreach (var (level, annotation) in options.CiLevelAnnotations)
+            {
+                if (!Enum.IsDefined(level))
+                {
+                    failures.Add($"{nameof(options.CiLevelAnnotations)} contains invalid log level '{level}'.");
+                }
+
+                if (annotation is not null && !Enum.IsDefined(annotation.Value))
+                {
+                    failures.Add($"{nameof(options.CiLevelAnnotations)} contains invalid annotation '{annotation}'.");
+                }
+            }
+        }
+
         for (var i = 0; i < options.MaskedNamePatterns.Count; i++)
         {
             var pattern = options.MaskedNamePatterns[i];

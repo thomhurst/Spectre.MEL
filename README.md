@@ -20,8 +20,8 @@ emit collapsible groups, level annotations, and (where supported) secret masks:
 
 | Runner | Group syntax | Level annotations | Secret mask |
 |--------|--------------|-------------------|-------------|
-| GitHub Actions | `::group::` / `::endgroup::` | `::error::` / `::warning::` / `::debug::` | `::add-mask::` |
-| Azure Pipelines | `##[group]` / `##[endgroup]` | `##[error]` / `##[warning]` / `##[debug]` | — |
+| GitHub Actions | `::group::` / `::endgroup::` | `::error::` / `::warning::` (`::debug::` opt-in) | `::add-mask::` |
+| Azure Pipelines | `##[group]` / `##[endgroup]` | `##[error]` / `##[warning]` (`##[debug]` opt-in) | — |
 | GitLab CI | `section_start` / `section_end` | — | — |
 | TeamCity | `##teamcity[blockOpened]` | `##teamcity[message status=...]` | — |
 | Buildkite | `--- <label>` | — | — |
@@ -90,6 +90,19 @@ Built-in themes: `Default`, `Dark`, `Light`, `Monochrome`.
 builder.AddSpectreConsole(o =>
 {
     o.CiMode = CiMode.GitHubActions; // or Auto, Off, AzurePipelines, etc.
+});
+```
+
+Debug and trace entries are ordinary visible log lines by default. Native debug
+annotations are often hidden by CI runners; for example, GitHub Actions hides
+`::debug::` unless `ACTIONS_STEP_DEBUG=true`. Consumers who enable that runner
+setting can opt in explicitly:
+
+```csharp
+builder.AddSpectreConsole(o =>
+{
+    o.CiLevelAnnotations[LogLevel.Debug] = CiAnnotation.Debug;
+    o.CiLevelAnnotations[LogLevel.Trace] = CiAnnotation.Debug;
 });
 ```
 

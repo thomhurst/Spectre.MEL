@@ -35,7 +35,8 @@ internal abstract class CiRendererBase : ICiRenderer
     public virtual void RenderEntry(IAnsiConsole console, LogEntry entry, int scopeDepth)
     {
         var maskValues = new List<string>(0);
-        var prefix = BuildLevelAnnotationPrefix(entry.Level);
+        var annotation = GetLevelAnnotation(entry.Level);
+        var prefix = annotation is null ? null : BuildLevelAnnotationPrefix(annotation.Value);
         var suppressLevel = prefix is not null && _context.SuppressInlineLevelOnCiAnnotation;
         var markup = _context.Formatter.Format(entry, maskValues, suppressLevel);
 
@@ -69,7 +70,9 @@ internal abstract class CiRendererBase : ICiRenderer
         }
     }
 
-    protected virtual string? BuildLevelAnnotationPrefix(LogLevel level) => null;
+    protected CiAnnotation? GetLevelAnnotation(LogLevel level) => _context.LevelAnnotations.Get(level);
+
+    protected virtual string? BuildLevelAnnotationPrefix(CiAnnotation annotation) => null;
 
     protected virtual string? BuildIndent(int depth) => null;
 }

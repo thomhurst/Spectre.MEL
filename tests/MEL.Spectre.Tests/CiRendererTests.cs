@@ -23,7 +23,7 @@ public class CiRendererTests
     }
 
     [Test]
-    public async Task AzurePipelines_emits_error_warning_debug_annotations()
+    public async Task AzurePipelines_emits_error_and_warning_annotations_by_default()
     {
         var output = await LogTestHarness.CaptureAsync(CiMode.AzurePipelines, logger =>
         {
@@ -35,7 +35,8 @@ public class CiRendererTests
 
         await Assert.That(output).Contains("##[error]");
         await Assert.That(output).Contains("##[warning]");
-        await Assert.That(output).Contains("##[debug]");
+        await Assert.That(output).DoesNotContain("##[debug]");
+        await Assert.That(output).Contains("dbg");
         await Assert.That(output).DoesNotContain("##[info]");
     }
 
@@ -154,6 +155,31 @@ public class CiRendererTests
         await Assert.That(output).DoesNotContain("##teamcity[");
         await Assert.That(output).DoesNotContain("travis_fold:");
         await Assert.That(output).DoesNotContain("--- ");
+    }
+
+    [Test]
+    public async Task GitHubActions_debug_is_visible_without_annotation_by_default()
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.GitHubActions, logger =>
+        {
+            logger.LogDebug("visible debug");
+        });
+
+        await Assert.That(output).Contains("DEBU");
+        await Assert.That(output).Contains("visible debug");
+        await Assert.That(output).DoesNotContain("::debug::");
+    }
+
+    [Test]
+    public async Task GitHubActions_debug_annotation_can_be_enabled_explicitly()
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.GitHubActions, logger =>
+        {
+            logger.LogDebug("opted-in debug");
+        }, o => o.CiLevelAnnotations[LogLevel.Debug] = CiAnnotation.Debug);
+
+        await Assert.That(output).Contains("::debug::");
+        await Assert.That(output).Contains("opted-in debug");
     }
 
     [Test]

@@ -8,4 +8,5 @@ internal sealed record RendererContext(
     EntryFormatter Formatter,
     SecretMasker Masker,
     ExceptionFormats ExceptionFormats,
-    bool SuppressInlineLevelOnCiAnnotation = false);
+    bool SuppressInlineLevelOnCiAnnotation,
+    CiLevelAnnotationMap LevelAnnotations);

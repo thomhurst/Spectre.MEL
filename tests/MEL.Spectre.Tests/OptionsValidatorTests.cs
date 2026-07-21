@@ -93,6 +93,26 @@ public class OptionsValidatorTests
     }
 
     [Test]
+    public async Task CiLevelAnnotations_must_not_be_null()
+    {
+        var result = Validator.Validate(null, new SpectreConsoleLoggerOptions { CiLevelAnnotations = null! });
+        await Assert.That(result.Failed).IsTrue();
+        await Assert.That(result.FailureMessage).Contains("CiLevelAnnotations");
+    }
+
+    [Test]
+    public async Task CiLevelAnnotations_reject_invalid_values()
+    {
+        var options = new SpectreConsoleLoggerOptions();
+        options.CiLevelAnnotations[LogLevel.Information] = (CiAnnotation)999;
+
+        var result = Validator.Validate(null, options);
+
+        await Assert.That(result.Failed).IsTrue();
+        await Assert.That(result.FailureMessage).Contains("CiLevelAnnotations");
+    }
+
+    [Test]
     public async Task MaskedNamePatterns_must_compile_as_regex()
     {
         var options = new SpectreConsoleLoggerOptions();

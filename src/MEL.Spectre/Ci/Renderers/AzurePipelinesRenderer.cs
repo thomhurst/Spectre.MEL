@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using Spectre.Console;
 using MEL.Spectre.Scopes;
 
@@ -24,11 +23,11 @@ internal sealed class AzurePipelinesRenderer : CiRendererBase
         console.WriteLine("##[endgroup]");
     }
 
-    protected override string? BuildLevelAnnotationPrefix(LogLevel level) => level switch
+    protected override string? BuildLevelAnnotationPrefix(CiAnnotation annotation) => annotation switch
     {
-        LogLevel.Critical or LogLevel.Error => "##[error]",
-        LogLevel.Warning => "##[warning]",
-        LogLevel.Debug or LogLevel.Trace => "##[debug]",
+        CiAnnotation.Error => "##[error]",
+        CiAnnotation.Warning => "##[warning]",
+        CiAnnotation.Debug => "##[debug]",
         _ => null,
     };
 }
