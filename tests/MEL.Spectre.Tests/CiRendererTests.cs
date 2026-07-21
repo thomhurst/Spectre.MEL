@@ -354,15 +354,16 @@ public class CiRendererTests
     }
 
     [Test]
-    public async Task GitHubActions_multiline_mask_registers_each_line_raw()
+    public async Task GitHubActions_multiline_mask_registers_full_value_and_each_line_raw()
     {
         var output = await CaptureMaskedSecretAsync("first\nsecond\r\nthird", consoleWidth: 5);
         var maskLines = GetMaskLines(output);
 
-        await Assert.That(maskLines).Count().IsEqualTo(3);
-        await Assert.That(maskLines[0]).IsEqualTo(AddMaskPrefix + "first");
-        await Assert.That(maskLines[1]).IsEqualTo(AddMaskPrefix + "second");
-        await Assert.That(maskLines[2]).IsEqualTo(AddMaskPrefix + "third");
+        await Assert.That(maskLines).Count().IsEqualTo(4);
+        await Assert.That(maskLines[0]).IsEqualTo(AddMaskPrefix + "first%0Asecond%0D%0Athird");
+        await Assert.That(maskLines[1]).IsEqualTo(AddMaskPrefix + "first");
+        await Assert.That(maskLines[2]).IsEqualTo(AddMaskPrefix + "second");
+        await Assert.That(maskLines[3]).IsEqualTo(AddMaskPrefix + "third");
     }
 
     [Test]

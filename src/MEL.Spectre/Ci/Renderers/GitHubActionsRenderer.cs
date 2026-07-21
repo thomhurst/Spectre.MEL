@@ -27,6 +27,11 @@ internal sealed class GitHubActionsRenderer : CiRendererBase
             return;
         }
 
+        if (remaining.IndexOfAny('\r', '\n') >= 0)
+        {
+            WriteMask(writer, remaining);
+        }
+
         while (!remaining.IsEmpty)
         {
             var newlineIndex = remaining.IndexOfAny('\r', '\n');
@@ -97,16 +102,21 @@ internal sealed class GitHubActionsRenderer : CiRendererBase
     {
         while (true)
         {
-            var percentIndex = value.IndexOf('%');
-            if (percentIndex < 0)
+            var escapeIndex = value.IndexOfAny('%', '\r', '\n');
+            if (escapeIndex < 0)
             {
                 writer.WriteLine(value);
                 return;
             }
 
-            writer.Write(value[..percentIndex]);
-            writer.Write("%25");
-            value = value[(percentIndex + 1)..];
+            writer.Write(value[..escapeIndex]);
+            writer.Write(value[escapeIndex] switch
+            {
+                '%' => "%25",
+                '\r' => "%0D",
+                _ => "%0A",
+            });
+            value = value[(escapeIndex + 1)..];
         }
     }
 
