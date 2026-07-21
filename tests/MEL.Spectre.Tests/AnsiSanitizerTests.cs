@@ -136,6 +136,17 @@ public class AnsiSanitizerTests
     }
 
     [Test]
+    public async Task Bel_terminates_only_osc_payloads()
+    {
+        // BEL inside a DCS/APC payload is data, not a terminator — the payload runs to ST
+        var dcs = AnsiSanitizer.EscapeAndSanitize($"{Esc}Pdata\ahidden{Esc}\\after", EmbeddedAnsiMode.Convert);
+        await Assert.That(dcs).IsEqualTo("after");
+
+        var apc = AnsiSanitizer.EscapeAndSanitize($"{Esc}_data\ahidden{Esc}\\after", EmbeddedAnsiMode.Convert);
+        await Assert.That(apc).IsEqualTo("after");
+    }
+
+    [Test]
     public async Task Cursor_and_erase_sequences_are_removed_in_convert_mode()
     {
         var result = AnsiSanitizer.EscapeAndSanitize($"{Esc}[2K{Esc}[1Gprogress 100%", EmbeddedAnsiMode.Convert);

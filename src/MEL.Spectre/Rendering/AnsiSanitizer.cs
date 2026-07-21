@@ -105,12 +105,14 @@ internal struct AnsiMarkupState
             case AnsiSanitizer.CsiChar:
                 ConsumeControlSequence(text, ref i, i + 1, convert);
                 return;
+            case '\x9d': // C1 OSC — BEL is a valid (xterm-compatible) terminator alongside ST
+                i = SkipStringSequence(text, i + 1, belTerminates: true);
+                return;
             case '\x90': // C1 DCS
             case '\x98': // C1 SOS
-            case '\x9d': // C1 OSC
             case '\x9e': // C1 PM
-            case '\x9f': // C1 APC
-                i = SkipStringSequence(text, i + 1);
+            case '\x9f': // C1 APC — these terminate only on ST; BEL is part of the payload
+                i = SkipStringSequence(text, i + 1, belTerminates: false);
                 return;
             case >= '\x90' and <= '\x9f': // other C1 controls (incl. a stray ST) — drop
                 i++;
@@ -128,12 +130,14 @@ internal struct AnsiMarkupState
             case '[':
                 ConsumeControlSequence(text, ref i, i + 2, convert);
                 break;
-            case ']': // OSC
+            case ']': // OSC — BEL is a valid (xterm-compatible) terminator alongside ST
+                i = SkipStringSequence(text, i + 2, belTerminates: true);
+                break;
             case 'P': // DCS
             case 'X': // SOS
             case '^': // PM
-            case '_': // APC
-                i = SkipStringSequence(text, i + 2);
+            case '_': // APC — these terminate only on ST; BEL is part of the payload
+                i = SkipStringSequence(text, i + 2, belTerminates: false);
                 break;
             default:
                 // ESC + optional intermediates (0x20-0x2F) + one final byte, e.g. ESC 7 or ESC ( B.
@@ -370,14 +374,15 @@ internal struct AnsiMarkupState
         _decoration = Decoration.None;
     }
 
-    private static int SkipStringSequence(string text, int start)
+    private static int SkipStringSequence(string text, int start, bool belTerminates)
     {
-        // OSC/DCS/SOS/PM/APC payloads run until BEL or ST (ESC \ or 8-bit 0x9C).
+        // String-control payloads run until ST (ESC \ or 8-bit 0x9C); OSC additionally accepts the
+        // xterm-compatible BEL terminator.
         var j = start;
         while (j < text.Length)
         {
             var c = text[j];
-            if (c == '\x07' || c == '\x9c')
+            if (c == '\x9c' || (belTerminates && c == '\x07'))
             {
                 return j + 1;
             }
