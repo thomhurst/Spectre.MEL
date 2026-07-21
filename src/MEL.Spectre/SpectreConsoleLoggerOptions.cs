@@ -36,13 +36,11 @@ public sealed class SpectreConsoleLoggerOptions
     public bool AllowMarkupInMessageTemplate { get; set; }
 
     /// <summary>
-    /// When true, suppress the rendered level segment (e.g. <c>WARN</c>) for entries whose level is also emitted
-    /// as a native CI annotation (such as <c>::warning::</c> for GitHub Actions). Avoids duplicate severity
-    /// markers on the same line. If the level segment in the template is wrapped by a tight bracket pair such as
-    /// <c>[{Level:u}] {Message}</c>, the surrounding brackets and inner spacing are stripped too so the line does
-    /// not render as an empty <c>[]</c>. Defaults to false to preserve existing rendering.
+    /// When true, entries emitted as native CI annotations use only the rendered <c>{Message}</c> payload.
+    /// This avoids duplicate severity and dangling separators from the full output template. Defaults to true;
+    /// set to false to retain the complete template, including its inline level.
     /// </summary>
-    public bool SuppressInlineLevelOnCiAnnotation { get; set; }
+    public bool SuppressInlineLevelOnCiAnnotation { get; set; } = true;
 
     /// <summary>
     /// Maps log levels to native CI annotations. Critical and error entries emit error annotations,

@@ -53,10 +53,10 @@ internal sealed class EntryFormatter
         }
     }
 
-    public string Format(LogEntry entry, List<string>? maskValueSink = null, bool suppressLevelSegment = false)
+    public string Format(LogEntry entry, List<string>? maskValueSink = null)
     {
         var builder = new StringBuilder(256);
-        var suppressLevel = suppressLevelSegment || entry.Level < _minimumInlineLevel;
+        var suppressLevel = entry.Level < _minimumInlineLevel;
 
         // One-segment-deep lookahead: hold the most recent Literal so we can trim a trailing "[" from it
         // when the immediately-following segment is a suppressed Level. This keeps the bracket-peel logic
@@ -160,6 +160,12 @@ internal sealed class EntryFormatter
 
         return builder.ToString();
     }
+
+    public string FormatMessage(LogEntry entry, List<string>? maskValueSink = null) =>
+        string.Concat(
+            _messageOpenTag,
+            MessageFormatter.Render(entry.OriginalFormat, entry.Message, entry.Placeholders, _theme, _masker, maskValueSink, _allowMarkupInTemplate),
+            _messageCloseTag);
 
     private static void FlushPendingLiteral(StringBuilder builder, TemplateSegment segment, ref bool dropLeadingCloseBracket)
     {
