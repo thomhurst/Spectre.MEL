@@ -60,8 +60,25 @@ internal sealed class GitHubActionsRenderer : CiRendererBase
             }
 
             writer.Write(AddMaskPrefix);
-            writer.WriteLine(value[..chunkLength]);
+            WriteWorkflowCommandValue(writer, value[..chunkLength]);
             value = value[chunkLength..];
+        }
+    }
+
+    private static void WriteWorkflowCommandValue(TextWriter writer, ReadOnlySpan<char> value)
+    {
+        while (true)
+        {
+            var percentIndex = value.IndexOf('%');
+            if (percentIndex < 0)
+            {
+                writer.WriteLine(value);
+                return;
+            }
+
+            writer.Write(value[..percentIndex]);
+            writer.Write("%25");
+            value = value[(percentIndex + 1)..];
         }
     }
 

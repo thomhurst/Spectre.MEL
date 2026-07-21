@@ -310,6 +310,16 @@ public class CiRendererTests
     }
 
     [Test]
+    public async Task GitHubActions_mask_escapes_workflow_command_percent_sequences()
+    {
+        var output = await CaptureMaskedSecretAsync("literal%25secret", consoleWidth: 80);
+        var maskLines = GetMaskLines(output);
+
+        await Assert.That(maskLines).Count().IsEqualTo(1);
+        await Assert.That(maskLines[0]).IsEqualTo(AddMaskPrefix + "literal%2525secret");
+    }
+
+    [Test]
     public async Task GitHubActions_long_mask_is_registered_as_complete_raw_chunks()
     {
         var secret = new string('s', 5_000);
