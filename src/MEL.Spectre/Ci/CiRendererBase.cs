@@ -51,18 +51,21 @@ internal abstract class CiRendererBase : ICiRenderer
             }
         }
 
+        var indent = BuildIndent(scopeDepth);
         if (prefix is not null)
         {
-            console.Write(prefix);
+            var plainLine = Markup.Remove(indent is null ? markup : indent + markup);
+            WriteCommand(console, prefix + plainLine);
         }
-
-        var indent = BuildIndent(scopeDepth);
-        if (indent is not null)
+        else
         {
-            console.Markup(indent);
-        }
+            if (indent is not null)
+            {
+                console.Markup(indent);
+            }
 
-        console.MarkupLine(markup);
+            console.MarkupLine(markup);
+        }
 
         if (entry.Exception is not null)
         {
@@ -75,4 +78,7 @@ internal abstract class CiRendererBase : ICiRenderer
     protected virtual string? BuildLevelAnnotationPrefix(CiAnnotation annotation) => null;
 
     protected virtual string? BuildIndent(int depth) => null;
+
+    protected static void WriteCommand(IAnsiConsole console, string command) =>
+        console.Profile.Out.Writer.WriteLine(command);
 }

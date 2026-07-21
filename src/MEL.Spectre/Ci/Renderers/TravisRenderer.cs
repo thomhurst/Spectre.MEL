@@ -15,11 +15,11 @@ internal sealed class TravisRenderer : CiRendererBase
 
     public override void OpenScope(IAnsiConsole console, ScopeFrame frame, int depth)
     {
-        console.WriteLine($"travis_fold:start:scope_{frame.Id}\r{frame.Label}");
+        WriteCommand(console, $"travis_fold:start:scope_{frame.Id}\r{frame.Label}");
     }
 
     public override void CloseScope(IAnsiConsole console, ScopeFrame frame, int depth)
     {
-        console.WriteLine($"travis_fold:end:scope_{frame.Id}\r");
+        WriteCommand(console, $"travis_fold:end:scope_{frame.Id}\r");
     }
 }

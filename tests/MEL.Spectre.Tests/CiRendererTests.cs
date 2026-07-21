@@ -279,6 +279,97 @@ public class CiRendererTests
         await Assert.That(differentMaskCount).IsEqualTo(1);
     }
 
+    [Test]
+    public async Task GitHubActions_long_group_command_is_one_physical_line()
+    {
+        var label = new string('g', 200);
+        var output = await CaptureAtWidthAsync(CiMode.GitHubActions, 20, logger =>
+        {
+            using (logger.BeginScope(label))
+            {
+                logger.LogInformation("inside");
+            }
+        });
+
+        var groupLines = GetPhysicalLines(output)
+            .Where(line => line.StartsWith("::group::", StringComparison.Ordinal))
+            .ToArray();
+
+        await Assert.That(groupLines).Count().IsEqualTo(1);
+        await Assert.That(groupLines[0]).IsEqualTo("::group::" + label);
+    }
+
+    [Test]
+    [Arguments(CiMode.AzurePipelines)]
+    [Arguments(CiMode.GitLabCi)]
+    [Arguments(CiMode.TeamCity)]
+    [Arguments(CiMode.Buildkite)]
+    [Arguments(CiMode.Travis)]
+    public async Task Native_ci_group_commands_do_not_wrap(CiMode mode)
+    {
+        var label = new string('g', 200);
+        var output = await CaptureAtWidthAsync(mode, 20, logger =>
+        {
+            using (logger.BeginScope(label))
+            {
+                logger.LogInformation("inside");
+            }
+        });
+
+        var labelLines = GetPhysicalLines(output)
+            .Where(line => line.Contains("ggggg", StringComparison.Ordinal))
+            .ToArray();
+
+        await Assert.That(labelLines).Count().IsGreaterThanOrEqualTo(1);
+        foreach (var line in labelLines)
+        {
+            await Assert.That(line).Contains(label);
+        }
+    }
+
+    [Test]
+    public async Task GitHubActions_long_warning_command_is_one_physical_line()
+    {
+        var message = new string('w', 200);
+        var output = await CaptureAtWidthAsync(
+            CiMode.GitHubActions,
+            20,
+            logger => logger.LogWarning("{Message}", message),
+            o => o.Template = "{Message}");
+
+        var annotationLines = GetPhysicalLines(output)
+            .Where(line => line.StartsWith("::warning::", StringComparison.Ordinal))
+            .ToArray();
+
+        await Assert.That(annotationLines).Count().IsEqualTo(1);
+        await Assert.That(annotationLines[0]).IsEqualTo("::warning::" + message);
+    }
+
+    private static async Task<string> CaptureAtWidthAsync(
+        CiMode mode,
+        int width,
+        Action<ILogger> log,
+        Action<SpectreConsoleLoggerOptions>? configure = null)
+    {
+        var (console, services, logger) = LogTestHarness.Build(mode, configure);
+        console.Profile.Width = width;
+
+        try
+        {
+            log(logger);
+        }
+        finally
+        {
+            await services.DisposeAsync();
+        }
+
+        return console.Output;
+    }
+
+    private static string[] GetPhysicalLines(string output) =>
+        output.Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
     private static int CountSubstring(string haystack, string needle)
     {
         var count = 0;

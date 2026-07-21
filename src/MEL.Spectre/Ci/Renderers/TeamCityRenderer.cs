@@ -16,12 +16,12 @@ internal sealed class TeamCityRenderer : CiRendererBase
 
     public override void OpenScope(IAnsiConsole console, ScopeFrame frame, int depth)
     {
-        console.WriteLine($"##teamcity[blockOpened name='{Escape(frame.Label)}']");
+        WriteCommand(console, $"##teamcity[blockOpened name='{Escape(frame.Label)}']");
     }
 
     public override void CloseScope(IAnsiConsole console, ScopeFrame frame, int depth)
     {
-        console.WriteLine($"##teamcity[blockClosed name='{Escape(frame.Label)}']");
+        WriteCommand(console, $"##teamcity[blockClosed name='{Escape(frame.Label)}']");
     }
 
     public override void RenderEntry(IAnsiConsole console, LogEntry entry, int scopeDepth)
@@ -30,7 +30,7 @@ internal sealed class TeamCityRenderer : CiRendererBase
         if (annotation is CiAnnotation.Error or CiAnnotation.Warning)
         {
             var status = annotation == CiAnnotation.Error ? "ERROR" : "WARNING";
-            console.WriteLine($"##teamcity[message text='{Escape(entry.Message)}' status='{status}']");
+            WriteCommand(console, $"##teamcity[message text='{Escape(entry.Message)}' status='{status}']");
         }
         base.RenderEntry(console, entry, scopeDepth);
     }

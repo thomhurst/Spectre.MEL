@@ -15,6 +15,6 @@ internal sealed class BuildkiteRenderer : CiRendererBase
 
     public override void OpenScope(IAnsiConsole console, ScopeFrame frame, int depth)
     {
-        console.WriteLine($"--- {frame.Label}");
+        WriteCommand(console, $"--- {frame.Label}");
     }
 }
