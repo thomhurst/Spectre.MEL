@@ -7,6 +7,8 @@ namespace MEL.Spectre.Tests;
 
 public class CiRendererTests
 {
+    private const string AddMaskPrefix = "::add-mask::";
+
     [Test]
     public async Task AzurePipelines_emits_group_endgroup_markers()
     {
@@ -297,6 +299,84 @@ public class CiRendererTests
     }
 
     [Test]
+    public async Task GitHubActions_mask_emission_bypasses_consumer_console_width()
+    {
+        var secret = new string('s', 200);
+        var output = await CaptureMaskedSecretAsync(secret, consoleWidth: 80);
+        var maskLines = GetMaskLines(output);
+
+        await Assert.That(maskLines).Count().IsEqualTo(1);
+        await Assert.That(maskLines[0]).IsEqualTo(AddMaskPrefix + secret);
+    }
+
+    [Test]
+    public async Task GitHubActions_mask_escapes_workflow_command_percent_sequences()
+    {
+        var output = await CaptureMaskedSecretAsync("literal%25secret", consoleWidth: 80);
+        var maskLines = GetMaskLines(output);
+
+        await Assert.That(maskLines).Count().IsEqualTo(1);
+        await Assert.That(maskLines[0]).IsEqualTo(AddMaskPrefix + "literal%2525secret");
+    }
+
+    [Test]
+    public async Task GitHubActions_long_mask_is_registered_in_full_and_as_raw_chunks()
+    {
+        var secret = new string('s', 5_000);
+        var output = await CaptureMaskedSecretAsync(secret, consoleWidth: 80);
+        var lines = GetPhysicalLines(output);
+        var maskLines = GetMaskLines(output);
+
+        await Assert.That(maskLines).Count().IsGreaterThan(2);
+        await Assert.That(maskLines[0]).IsEqualTo(AddMaskPrefix + secret);
+
+        var registeredValue = string.Concat(maskLines.Skip(1).Select(line => line[AddMaskPrefix.Length..]));
+        await Assert.That(registeredValue).IsEqualTo(secret);
+
+        foreach (var line in lines.Where(line => !line.StartsWith(AddMaskPrefix, StringComparison.Ordinal)))
+        {
+            await Assert.That(line).DoesNotContain(new string('s', 80));
+        }
+    }
+
+    [Test]
+    public async Task GitHubActions_long_mask_overlaps_short_final_chunk()
+    {
+        var secret = new string('s', 1_000) + "a";
+        var output = await CaptureMaskedSecretAsync(secret, consoleWidth: 80);
+        var maskLines = GetMaskLines(output);
+
+        await Assert.That(maskLines).Count().IsEqualTo(3);
+        await Assert.That(maskLines[0]).IsEqualTo(AddMaskPrefix + secret);
+        await Assert.That(maskLines[1]).IsEqualTo(AddMaskPrefix + secret[..1_000]);
+        await Assert.That(maskLines[2]).IsEqualTo(AddMaskPrefix + secret[^1_000..]);
+        await Assert.That(maskLines).DoesNotContain(AddMaskPrefix + "a");
+    }
+
+    [Test]
+    public async Task GitHubActions_multiline_mask_registers_full_value_and_each_line_raw()
+    {
+        var output = await CaptureMaskedSecretAsync("first\nsecond\r\nthird", consoleWidth: 5);
+        var maskLines = GetMaskLines(output);
+
+        await Assert.That(maskLines).Count().IsEqualTo(4);
+        await Assert.That(maskLines[0]).IsEqualTo(AddMaskPrefix + "first%0Asecond%0D%0Athird");
+        await Assert.That(maskLines[1]).IsEqualTo(AddMaskPrefix + "first");
+        await Assert.That(maskLines[2]).IsEqualTo(AddMaskPrefix + "second");
+        await Assert.That(maskLines[3]).IsEqualTo(AddMaskPrefix + "third");
+    }
+
+    [Test]
+    public async Task GitHubActions_multiline_mask_does_not_register_tiny_physical_lines()
+    {
+        var output = await CaptureMaskedSecretAsync("{\nsecret-value\n  a  \n}", consoleWidth: 5);
+        var maskLines = GetMaskLines(output);
+
+        await Assert.That(maskLines).Count().IsEqualTo(1);
+        await Assert.That(maskLines[0]).IsEqualTo(AddMaskPrefix + "secret-value");
+    }
+
+    [Test]
     public async Task GitHubActions_long_group_command_is_one_physical_line()
     {
         var label = new string('g', 200);
@@ -382,6 +462,30 @@ public class CiRendererTests
 
         return console.Output;
     }
+
+    private static async Task<string> CaptureMaskedSecretAsync(string secret, int consoleWidth)
+    {
+        var (console, services, logger) = LogTestHarness.Build(
+            CiMode.GitHubActions,
+            o => o.Template = "{Message}");
+        console.Profile.Width = consoleWidth;
+
+        try
+        {
+            logger.LogInformation("Secret {Password}", secret);
+        }
+        finally
+        {
+            await services.DisposeAsync();
+        }
+
+        return console.Output;
+    }
+
+    private static string[] GetMaskLines(string output) =>
+        GetPhysicalLines(output)
+            .Where(line => line.StartsWith(AddMaskPrefix, StringComparison.Ordinal))
+            .ToArray();
 
     private static string[] GetPhysicalLines(string output) =>
         output.Replace("\r\n", "\n", StringComparison.Ordinal)

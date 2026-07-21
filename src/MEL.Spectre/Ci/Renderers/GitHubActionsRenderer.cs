@@ -5,6 +5,11 @@ namespace MEL.Spectre.Ci.Renderers;
 
 internal sealed class GitHubActionsRenderer : CiRendererBase
 {
+    private const string AddMaskPrefix = "::add-mask::";
+    private const int MaskChunkLength = 1_000;
+    // The runner also registers every trimmed physical line from a multiline mask.
+    private const int MinimumMultilineMaskLineLength = 4;
+
     public GitHubActionsRenderer(RendererContext context) : base(context)
     {
     }
@@ -15,7 +20,139 @@ internal sealed class GitHubActionsRenderer : CiRendererBase
 
     public override void EmitMask(IAnsiConsole console, string value)
     {
-        WriteCommand(console, $"::add-mask::{value}");
+        var writer = console.Profile.Out.Writer;
+        var remaining = value.AsSpan();
+
+        if (remaining.IsEmpty)
+        {
+            writer.WriteLine(AddMaskPrefix);
+            return;
+        }
+
+        var isMultiline = remaining.IndexOfAny('\r', '\n') >= 0;
+        if (isMultiline && CanRegisterCompleteMultilineMask(remaining))
+        {
+            WriteMask(writer, remaining);
+        }
+
+        while (!remaining.IsEmpty)
+        {
+            var newlineIndex = remaining.IndexOfAny('\r', '\n');
+            var line = newlineIndex >= 0 ? remaining[..newlineIndex] : remaining;
+            if (!isMultiline || IsSafeMultilineMaskLine(line))
+            {
+                if (line.Length > MaskChunkLength)
+                {
+                    WriteMask(writer, line);
+                }
+                WriteMaskChunks(writer, line);
+            }
+
+            if (newlineIndex < 0)
+            {
+                break;
+            }
+
+            var newlineLength = remaining[newlineIndex] == '\r'
+                && newlineIndex + 1 < remaining.Length
+                && remaining[newlineIndex + 1] == '\n'
+                    ? 2
+                    : 1;
+            remaining = remaining[(newlineIndex + newlineLength)..];
+        }
+    }
+
+    private static bool CanRegisterCompleteMultilineMask(ReadOnlySpan<char> value)
+    {
+        while (true)
+        {
+            var newlineIndex = value.IndexOfAny('\r', '\n');
+            var line = newlineIndex >= 0 ? value[..newlineIndex] : value;
+            var trimmedLineLength = line.Trim().Length;
+            if (trimmedLineLength is > 0 and < MinimumMultilineMaskLineLength)
+            {
+                return false;
+            }
+
+            if (newlineIndex < 0)
+            {
+                return true;
+            }
+
+            var newlineLength = value[newlineIndex] == '\r'
+                && newlineIndex + 1 < value.Length
+                && value[newlineIndex + 1] == '\n'
+                    ? 2
+                    : 1;
+            value = value[(newlineIndex + newlineLength)..];
+        }
+    }
+
+    private static bool IsSafeMultilineMaskLine(ReadOnlySpan<char> line) =>
+        line.Trim().Length >= MinimumMultilineMaskLineLength;
+
+    private static void WriteMaskChunks(TextWriter writer, ReadOnlySpan<char> value)
+    {
+        while (value.Length > MaskChunkLength)
+        {
+            var chunkLength = MaskChunkLength;
+            if (char.IsHighSurrogate(value[chunkLength - 1])
+                && char.IsLowSurrogate(value[chunkLength]))
+            {
+                chunkLength--;
+            }
+
+            WriteMask(writer, value[..chunkLength]);
+
+            if (value.Length - chunkLength < MaskChunkLength)
+            {
+                var finalStart = value.Length - MaskChunkLength;
+                if (finalStart > 0
+                    && char.IsLowSurrogate(value[finalStart])
+                    && char.IsHighSurrogate(value[finalStart - 1]))
+                {
+                    finalStart--;
+                }
+
+                WriteMask(writer, value[finalStart..]);
+                return;
+            }
+
+            value = value[chunkLength..];
+        }
+
+        if (!value.IsEmpty)
+        {
+            WriteMask(writer, value);
+        }
+    }
+
+    private static void WriteMask(TextWriter writer, ReadOnlySpan<char> value)
+    {
+        writer.Write(AddMaskPrefix);
+        WriteWorkflowCommandValue(writer, value);
+    }
+
+    private static void WriteWorkflowCommandValue(TextWriter writer, ReadOnlySpan<char> value)
+    {
+        while (true)
+        {
+            var escapeIndex = value.IndexOfAny('%', '\r', '\n');
+            if (escapeIndex < 0)
+            {
+                writer.WriteLine(value);
+                return;
+            }
+
+            writer.Write(value[..escapeIndex]);
+            writer.Write(value[escapeIndex] switch
+            {
+                '%' => "%25",
+                '\r' => "%0D",
+                _ => "%0A",
+            });
+            value = value[(escapeIndex + 1)..];
+        }
     }
 
     public override void OpenScope(IAnsiConsole console, ScopeFrame frame, int depth)
