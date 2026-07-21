@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Spectre.Console;
 using Spectre.Console.Testing;
+using MEL.Spectre.Provider;
 using MEL.Spectre.Theme;
 
 namespace MEL.Spectre.Tests;
@@ -154,6 +155,78 @@ public class WriteModeTests
             console.Release();
             await services.DisposeAsync();
         }
+    }
+
+    [Test]
+    public async Task Canceled_background_flushes_remove_their_waiters()
+    {
+        var console = new BlockingAnsiConsole();
+        var services = BuildServices(console);
+
+        try
+        {
+            var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("CanceledFlush");
+            var control = services.GetRequiredService<ISpectreConsoleLoggerControl>();
+            var writer = GetWriter<BackgroundWriter>(services);
+            logger.LogInformation("blocked");
+
+            for (var i = 0; i < 100; i++)
+            {
+                using var cancellation = new CancellationTokenSource();
+                var flush = control.FlushAsync(cancellation.Token);
+                cancellation.Cancel();
+                await Assert.That(async () => await flush).Throws<OperationCanceledException>();
+            }
+
+            await Assert.That(writer.PendingFlushWaiterCount).IsEqualTo(0);
+        }
+        finally
+        {
+            console.Release();
+            await services.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Synchronous_FlushAsync_waits_for_log_already_blocked_on_write_lock()
+    {
+        var console = new TestConsole { Profile = { Width = 1_000_000 } };
+        var services = BuildServices(console, WriteMode.Synchronous);
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("SyncFlush");
+        var control = services.GetRequiredService<ISpectreConsoleLoggerControl>();
+        var writer = GetWriter<SynchronousWriter>(services);
+        Task log;
+        Task flush;
+
+        lock (control.SynchronizationLock)
+        {
+            log = Task.Run(() => logger.LogInformation("waiting log"));
+            if (!SpinWait.SpinUntil(() => writer.PendingEntryCount == 1, TimeSpan.FromSeconds(5)))
+            {
+                throw new TimeoutException("The synchronous log did not reach the writer.");
+            }
+
+            flush = control.FlushAsync();
+            if (flush.IsCompleted)
+            {
+                throw new InvalidOperationException("Flush completed before the earlier log acquired the write lock.");
+            }
+        }
+
+        await log;
+        await flush;
+        await Assert.That(console.Output).Contains("waiting log");
+        await services.DisposeAsync();
+    }
+
+    private static TWriter GetWriter<TWriter>(IServiceProvider services)
+        where TWriter : class, ILogEntryWriter
+    {
+        var provider = services.GetServices<ILoggerProvider>().OfType<SpectreConsoleLoggerProvider>().Single();
+        var field = typeof(SpectreConsoleLoggerProvider).GetField(
+            "_writer",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        return (TWriter)field.GetValue(provider)!;
     }
 
     private static ServiceProvider BuildServices(

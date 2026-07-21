@@ -6,6 +6,7 @@ namespace MEL.Spectre.Provider;
 internal sealed class SynchronousWriter : ILogEntryWriter
 {
     private readonly LogEntryRenderer _entryRenderer;
+    private readonly SequenceCompletionTracker _completionTracker = new();
     private OnceFlag _droppedAfterDisposeWarning;
     private bool _disposed;
 
@@ -16,37 +17,37 @@ internal sealed class SynchronousWriter : ILogEntryWriter
 
     public object SynchronizationLock { get; } = new();
 
+    internal int PendingEntryCount => _completionTracker.PendingEntryCount;
+
     public void Enqueue(LogEntry entry)
     {
-        lock (SynchronizationLock)
+        var sequence = _completionTracker.Begin();
+        try
         {
-            if (_disposed)
+            lock (SynchronizationLock)
             {
-                if (_droppedAfterDisposeWarning.TrySet())
+                if (_disposed)
                 {
-                    LogWriterDiagnostics.Emit("MEL.Spectre: log entry dropped after provider disposal.");
+                    if (_droppedAfterDisposeWarning.TrySet())
+                    {
+                        LogWriterDiagnostics.Emit("MEL.Spectre: log entry dropped after provider disposal.");
+                    }
+                    return;
                 }
-                return;
-            }
 
-            _entryRenderer.Render(entry);
+                _entryRenderer.Render(entry);
+            }
+        }
+        finally
+        {
+            _completionTracker.Complete(sequence);
         }
     }
 
-    public Task FlushAsync(CancellationToken cancellationToken)
+    public async Task FlushAsync(CancellationToken cancellationToken)
     {
-        if (cancellationToken.IsCancellationRequested)
-        {
-            return Task.FromCanceled(cancellationToken);
-        }
-
-        if (Monitor.TryEnter(SynchronizationLock))
-        {
-            Monitor.Exit(SynchronizationLock);
-            return Task.CompletedTask;
-        }
-
-        return WaitForSynchronizationAsync(cancellationToken);
+        await _completionTracker.FlushAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForSynchronizationAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private async Task WaitForSynchronizationAsync(CancellationToken cancellationToken)

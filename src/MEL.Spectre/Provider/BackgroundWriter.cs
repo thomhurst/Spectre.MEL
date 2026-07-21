@@ -12,12 +12,7 @@ internal sealed class BackgroundWriter : ILogEntryWriter
     private readonly TimeSpan _drainTimeout;
     private readonly TimeSpan _enqueueWaitTimeout;
     private readonly Task _consumerTask;
-    private readonly object _completionGate = new();
-    private readonly List<SequenceRange> _completedRanges = [];
-    private readonly List<FlushWaiter> _flushWaiters = [];
-    private Exception? _terminalFailure;
-    private long _lastSequence;
-    private long _completedSequence;
+    private readonly SequenceCompletionTracker _completionTracker = new();
     private long _droppedAfterDispose;
     private long _droppedBackpressure;
     private long _droppedChannelFault;
@@ -65,20 +60,13 @@ internal sealed class BackgroundWriter : ILogEntryWriter
 
     public long DroppedChannelFaultCount => Interlocked.Read(ref _droppedChannelFault);
 
-    internal int PendingCompletionRangeCount
-    {
-        get
-        {
-            lock (_completionGate)
-            {
-                return _completedRanges.Count;
-            }
-        }
-    }
+    internal int PendingCompletionRangeCount => _completionTracker.PendingCompletionRangeCount;
+
+    internal int PendingFlushWaiterCount => _completionTracker.PendingFlushWaiterCount;
 
     public void Enqueue(LogEntry entry)
     {
-        var queued = new QueuedEntry(entry, Interlocked.Increment(ref _lastSequence));
+        var queued = new QueuedEntry(entry, _completionTracker.Begin());
         if (_channel.Writer.TryWrite(queued))
         {
             return;
@@ -87,50 +75,21 @@ internal sealed class BackgroundWriter : ILogEntryWriter
         if (_channel.Reader.Completion.IsCompleted)
         {
             RecordDropAfterDispose();
-            CompleteSequence(queued.Sequence);
+            _completionTracker.Complete(queued.Sequence);
             return;
         }
 
         if (_backpressureMode != BackpressureMode.Wait)
         {
             RecordBackpressureDrop();
-            CompleteSequence(queued.Sequence);
+            _completionTracker.Complete(queued.Sequence);
             return;
         }
 
         WaitToWrite(queued);
     }
 
-    public Task FlushAsync(CancellationToken cancellationToken)
-    {
-        if (cancellationToken.IsCancellationRequested)
-        {
-            return Task.FromCanceled(cancellationToken);
-        }
-
-        var target = Interlocked.Read(ref _lastSequence);
-        Task flushTask;
-        lock (_completionGate)
-        {
-            if (_completedSequence >= target)
-            {
-                return Task.CompletedTask;
-            }
-
-            if (_terminalFailure is not null)
-            {
-                return Task.FromException(_terminalFailure);
-            }
-
-            var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            _flushWaiters.Add(new FlushWaiter(target, completion));
-            flushTask = completion.Task;
-        }
-
-        return cancellationToken.CanBeCanceled
-            ? flushTask.WaitAsync(cancellationToken)
-            : flushTask;
-    }
+    public Task FlushAsync(CancellationToken cancellationToken) => _completionTracker.FlushAsync(cancellationToken);
 
     private void WaitToWrite(QueuedEntry entry)
     {
@@ -144,14 +103,14 @@ internal sealed class BackgroundWriter : ILogEntryWriter
             if (_channel.Reader.Completion.IsCompleted)
             {
                 RecordDropAfterDispose();
-                CompleteSequence(entry.Sequence);
+                _completionTracker.Complete(entry.Sequence);
                 return;
             }
 
             if (Environment.TickCount64 >= deadline)
             {
                 RecordBackpressureDrop();
-                CompleteSequence(entry.Sequence);
+                _completionTracker.Complete(entry.Sequence);
                 return;
             }
 
@@ -166,20 +125,20 @@ internal sealed class BackgroundWriter : ILogEntryWriter
                     if (!_channel.Writer.WaitToWriteAsync(cts?.Token ?? CancellationToken.None).AsTask().GetAwaiter().GetResult())
                     {
                         RecordDropAfterDispose();
-                        CompleteSequence(entry.Sequence);
+                        _completionTracker.Complete(entry.Sequence);
                         return;
                     }
                 }
                 catch (OperationCanceledException)
                 {
                     RecordBackpressureDrop();
-                    CompleteSequence(entry.Sequence);
+                    _completionTracker.Complete(entry.Sequence);
                     return;
                 }
                 catch (Exception ex) when (!FatalExceptions.IsFatal(ex))
                 {
                     RecordChannelFault(ex);
-                    CompleteSequence(entry.Sequence);
+                    _completionTracker.Complete(entry.Sequence);
                     return;
                 }
             }
@@ -202,7 +161,7 @@ internal sealed class BackgroundWriter : ILogEntryWriter
                 }
                 finally
                 {
-                    CompleteSequence(queued.Sequence);
+                    _completionTracker.Complete(queued.Sequence);
                 }
             }
         }
@@ -215,7 +174,7 @@ internal sealed class BackgroundWriter : ILogEntryWriter
         {
             while (_channel.Reader.TryRead(out var queued))
             {
-                CompleteSequence(queued.Sequence);
+                _completionTracker.Complete(queued.Sequence);
             }
 
             lock (SynchronizationLock)
@@ -228,127 +187,7 @@ internal sealed class BackgroundWriter : ILogEntryWriter
     private void OnItemDropped(QueuedEntry entry)
     {
         RecordBackpressureDrop();
-        CompleteSequence(entry.Sequence);
-    }
-
-    private void CompleteSequence(long sequence)
-    {
-        List<TaskCompletionSource>? ready;
-        lock (_completionGate)
-        {
-            if (sequence <= _completedSequence)
-            {
-                return;
-            }
-
-            if (sequence == _completedSequence + 1)
-            {
-                _completedSequence = sequence;
-                while (_completedRanges.Count > 0 && _completedRanges[0].Start == _completedSequence + 1)
-                {
-                    _completedSequence = _completedRanges[0].End;
-                    _completedRanges.RemoveAt(0);
-                }
-            }
-            else
-            {
-                AddCompletedRange(sequence);
-            }
-
-            ready = TakeReadyFlushWaiters();
-        }
-
-        CompleteFlushWaiters(ready);
-    }
-
-    private void AddCompletedRange(long sequence)
-    {
-        for (var i = 0; i < _completedRanges.Count; i++)
-        {
-            var range = _completedRanges[i];
-            if (sequence < range.Start - 1)
-            {
-                _completedRanges.Insert(i, new SequenceRange(sequence, sequence));
-                return;
-            }
-
-            if (sequence == range.Start - 1)
-            {
-                _completedRanges[i] = range with { Start = sequence };
-                return;
-            }
-
-            if (sequence <= range.End)
-            {
-                return;
-            }
-
-            if (sequence == range.End + 1)
-            {
-                var end = sequence;
-                if (i + 1 < _completedRanges.Count && _completedRanges[i + 1].Start == sequence + 1)
-                {
-                    end = _completedRanges[i + 1].End;
-                    _completedRanges.RemoveAt(i + 1);
-                }
-
-                _completedRanges[i] = range with { End = end };
-                return;
-            }
-        }
-
-        _completedRanges.Add(new SequenceRange(sequence, sequence));
-    }
-
-    private void FailPendingFlushWaiters(Exception exception)
-    {
-        TaskCompletionSource[] pending;
-        lock (_completionGate)
-        {
-            _terminalFailure ??= exception;
-            pending = new TaskCompletionSource[_flushWaiters.Count];
-            for (var i = 0; i < _flushWaiters.Count; i++)
-            {
-                pending[i] = _flushWaiters[i].Completion;
-            }
-            _flushWaiters.Clear();
-        }
-
-        for (var i = 0; i < pending.Length; i++)
-        {
-            pending[i].TrySetException(exception);
-        }
-    }
-
-    private List<TaskCompletionSource>? TakeReadyFlushWaiters()
-    {
-        List<TaskCompletionSource>? ready = null;
-        for (var i = _flushWaiters.Count - 1; i >= 0; i--)
-        {
-            if (_flushWaiters[i].Target > _completedSequence)
-            {
-                continue;
-            }
-
-            ready ??= [];
-            ready.Add(_flushWaiters[i].Completion);
-            _flushWaiters.RemoveAt(i);
-        }
-
-        return ready;
-    }
-
-    private static void CompleteFlushWaiters(List<TaskCompletionSource>? ready)
-    {
-        if (ready is null)
-        {
-            return;
-        }
-
-        for (var i = 0; i < ready.Count; i++)
-        {
-            ready[i].TrySetResult();
-        }
+        _completionTracker.Complete(entry.Sequence);
     }
 
     private void RecordDropAfterDispose()
@@ -397,7 +236,7 @@ internal sealed class BackgroundWriter : ILogEntryWriter
                 LogWriterDiagnostics.Emit(timeout.Message);
             }
 
-            FailPendingFlushWaiters(timeout);
+            _completionTracker.Fail(timeout);
 
             if (Monitor.TryEnter(SynchronizationLock))
             {
@@ -414,8 +253,4 @@ internal sealed class BackgroundWriter : ILogEntryWriter
     }
 
     private readonly record struct QueuedEntry(LogEntry Entry, long Sequence);
-
-    private readonly record struct SequenceRange(long Start, long End);
-
-    private readonly record struct FlushWaiter(long Target, TaskCompletionSource Completion);
 }
