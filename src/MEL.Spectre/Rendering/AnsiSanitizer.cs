@@ -202,6 +202,14 @@ internal struct AnsiMarkupState
         }
 
         var final = text[j];
+        if (final < '\x40' || final > '\x7e')
+        {
+            // Malformed CSI (e.g. cut short by the next ESC): drop the introducer and parameters but
+            // reparse from the offending character so a following sequence is still consumed.
+            i = j;
+            return;
+        }
+
         i = j + 1;
         if (convert && final == 'm' && parameterEnd == j)
         {

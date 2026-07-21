@@ -158,6 +158,21 @@ public class AnsiSanitizerTests
     }
 
     [Test]
+    public async Task Malformed_csi_does_not_swallow_the_following_sequence()
+    {
+        // The truncated CSI is dropped; the reset that cut it short must still be consumed
+        var reset = AnsiSanitizer.EscapeAndSanitize($"x{Esc}[31{Esc}[0my", EmbeddedAnsiMode.Convert);
+        await Assert.That(reset).IsEqualTo("xy");
+
+        var color = AnsiSanitizer.EscapeAndSanitize($"x{Esc}[31{Esc}[32mgreen{Esc}[0m", EmbeddedAnsiMode.Convert);
+        await Assert.That(color).IsEqualTo($"x[{new Style(Color.FromInt32(2)).ToMarkup()}]green[/]");
+
+        // A CSI cut short by a C0 control abandons the sequence and keeps the newline
+        var newline = AnsiSanitizer.EscapeAndSanitize($"x{Esc}[31\ny", EmbeddedAnsiMode.Convert);
+        await Assert.That(newline).IsEqualTo("x\ny");
+    }
+
+    [Test]
     public async Task Reset_in_unmatched_brace_tail_closes_style_opened_before_it()
     {
         var masker = new SecretMasker(new SpectreConsoleLoggerOptions().MaskedNamePatterns, 256);
