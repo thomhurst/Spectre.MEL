@@ -25,13 +25,13 @@ jobs:
           global-json-file: global.json
 
       - name: Install GitVersion
-        uses: gittools/actions/gitversion/setup@v3.1.11
+        uses: gittools/actions/gitversion/setup@v3.2.1
         with:
           versionSpec: '6.0.x'
 
       - name: Determine version
         id: gitversion
-        uses: gittools/actions/gitversion/execute@v3.1.11
+        uses: gittools/actions/gitversion/execute@v3.2.1
 
       - name: Restore
         run: dotnet restore
