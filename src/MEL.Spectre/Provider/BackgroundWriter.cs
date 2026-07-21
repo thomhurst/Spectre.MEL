@@ -13,7 +13,7 @@ internal sealed class BackgroundWriter : ILogEntryWriter
     private readonly TimeSpan _enqueueWaitTimeout;
     private readonly Task _consumerTask;
     private readonly object _completionGate = new();
-    private readonly HashSet<long> _completedOutOfOrder = [];
+    private readonly List<SequenceRange> _completedRanges = [];
     private readonly List<FlushWaiter> _flushWaiters = [];
     private long _lastSequence;
     private long _completedSequence;
@@ -63,6 +63,17 @@ internal sealed class BackgroundWriter : ILogEntryWriter
     public long DroppedBackpressureCount => Interlocked.Read(ref _droppedBackpressure);
 
     public long DroppedChannelFaultCount => Interlocked.Read(ref _droppedChannelFault);
+
+    internal int PendingCompletionRangeCount
+    {
+        get
+        {
+            lock (_completionGate)
+            {
+                return _completedRanges.Count;
+            }
+        }
+    }
 
     public void Enqueue(LogEntry entry)
     {
@@ -216,7 +227,7 @@ internal sealed class BackgroundWriter : ILogEntryWriter
 
     private void CompleteSequence(long sequence)
     {
-        List<TaskCompletionSource>? ready = null;
+        List<TaskCompletionSource>? ready;
         lock (_completionGate)
         {
             if (sequence <= _completedSequence)
@@ -227,29 +238,96 @@ internal sealed class BackgroundWriter : ILogEntryWriter
             if (sequence == _completedSequence + 1)
             {
                 _completedSequence = sequence;
-                while (_completedOutOfOrder.Remove(_completedSequence + 1))
+                while (_completedRanges.Count > 0 && _completedRanges[0].Start == _completedSequence + 1)
                 {
-                    _completedSequence++;
+                    _completedSequence = _completedRanges[0].End;
+                    _completedRanges.RemoveAt(0);
                 }
             }
             else
             {
-                _completedOutOfOrder.Add(sequence);
+                AddCompletedRange(sequence);
             }
 
-            for (var i = _flushWaiters.Count - 1; i >= 0; i--)
+            ready = TakeReadyFlushWaiters();
+        }
+
+        CompleteFlushWaiters(ready);
+    }
+
+    private void AddCompletedRange(long sequence)
+    {
+        for (var i = 0; i < _completedRanges.Count; i++)
+        {
+            var range = _completedRanges[i];
+            if (sequence < range.Start - 1)
             {
-                if (_flushWaiters[i].Target > _completedSequence)
+                _completedRanges.Insert(i, new SequenceRange(sequence, sequence));
+                return;
+            }
+
+            if (sequence == range.Start - 1)
+            {
+                _completedRanges[i] = range with { Start = sequence };
+                return;
+            }
+
+            if (sequence <= range.End)
+            {
+                return;
+            }
+
+            if (sequence == range.End + 1)
+            {
+                var end = sequence;
+                if (i + 1 < _completedRanges.Count && _completedRanges[i + 1].Start == sequence + 1)
                 {
-                    continue;
+                    end = _completedRanges[i + 1].End;
+                    _completedRanges.RemoveAt(i + 1);
                 }
 
-                ready ??= [];
-                ready.Add(_flushWaiters[i].Completion);
-                _flushWaiters.RemoveAt(i);
+                _completedRanges[i] = range with { End = end };
+                return;
             }
         }
 
+        _completedRanges.Add(new SequenceRange(sequence, sequence));
+    }
+
+    private void CompleteThroughLastSequence()
+    {
+        List<TaskCompletionSource>? ready;
+        lock (_completionGate)
+        {
+            _completedSequence = Math.Max(_completedSequence, Interlocked.Read(ref _lastSequence));
+            _completedRanges.Clear();
+
+            ready = TakeReadyFlushWaiters();
+        }
+
+        CompleteFlushWaiters(ready);
+    }
+
+    private List<TaskCompletionSource>? TakeReadyFlushWaiters()
+    {
+        List<TaskCompletionSource>? ready = null;
+        for (var i = _flushWaiters.Count - 1; i >= 0; i--)
+        {
+            if (_flushWaiters[i].Target > _completedSequence)
+            {
+                continue;
+            }
+
+            ready ??= [];
+            ready.Add(_flushWaiters[i].Completion);
+            _flushWaiters.RemoveAt(i);
+        }
+
+        return ready;
+    }
+
+    private static void CompleteFlushWaiters(List<TaskCompletionSource>? ready)
+    {
         if (ready is null)
         {
             return;
@@ -306,6 +384,8 @@ internal sealed class BackgroundWriter : ILogEntryWriter
                 LogWriterDiagnostics.Emit($"MEL.Spectre: drain timeout after {_drainTimeout}; some log entries may be lost.");
             }
 
+            CompleteThroughLastSequence();
+
             if (Monitor.TryEnter(SynchronizationLock))
             {
                 try
@@ -321,6 +401,8 @@ internal sealed class BackgroundWriter : ILogEntryWriter
     }
 
     private readonly record struct QueuedEntry(LogEntry Entry, long Sequence);
+
+    private readonly record struct SequenceRange(long Start, long End);
 
     private readonly record struct FlushWaiter(long Target, TaskCompletionSource Completion);
 }

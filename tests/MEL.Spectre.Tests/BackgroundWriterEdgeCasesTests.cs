@@ -182,6 +182,40 @@ public class BackgroundWriterEdgeCasesTests
         await Assert.That(stderr.ToString()).Contains("drain timeout");
     }
 
+    [Test]
+    public async Task Dropped_sequences_are_coalesced_while_an_earlier_render_is_blocked()
+    {
+        var blocking = new BlockingAnsiConsole();
+        var services = new ServiceCollection()
+            .AddLogging(b => b.AddSpectreConsole(o =>
+            {
+                o.Console = blocking;
+                o.Theme = SpectreTheme.Monochrome;
+                o.CiMode = CiMode.Off;
+                o.ChannelCapacity = 1;
+                o.BackpressureMode = BackpressureMode.DropNewest;
+            }))
+            .BuildServiceProvider();
+
+        try
+        {
+            var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("Ranges");
+            logger.LogInformation("blocked");
+            for (var i = 0; i < 10_000; i++)
+            {
+                logger.LogInformation("dropped {Index}", i);
+            }
+
+            var writer = GetWriter(services);
+            await Assert.That(writer.PendingCompletionRangeCount).IsLessThanOrEqualTo(2);
+        }
+        finally
+        {
+            blocking.Release();
+            await services.DisposeAsync();
+        }
+    }
+
     private static BackgroundWriter GetWriter(IServiceProvider services)
     {
         var loggerProviders = services.GetServices<ILoggerProvider>();

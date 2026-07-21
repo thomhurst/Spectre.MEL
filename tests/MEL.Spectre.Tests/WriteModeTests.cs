@@ -92,6 +92,68 @@ public class WriteModeTests
         }
     }
 
+    [Test]
+    public async Task Synchronous_FlushAsync_honors_cancellation_while_write_lock_is_held()
+    {
+        var console = new TestConsole { Profile = { Width = 1_000_000 } };
+        var services = BuildServices(console, WriteMode.Synchronous);
+        var control = services.GetRequiredService<ISpectreConsoleLoggerControl>();
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+
+        var holder = Task.Run(() =>
+        {
+            lock (control.SynchronizationLock)
+            {
+                entered.Set();
+                release.Wait();
+            }
+        });
+
+        try
+        {
+            entered.Wait();
+            using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+
+            await Assert.That(async () => await control.FlushAsync(cancellation.Token))
+                .Throws<OperationCanceledException>();
+        }
+        finally
+        {
+            release.Set();
+            await holder;
+            await services.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task FlushAsync_completes_when_disposal_drain_times_out()
+    {
+        var console = new BlockingAnsiConsole();
+        var services = BuildServices(console, configure: options =>
+        {
+            options.ShutdownDrainTimeout = TimeSpan.FromMilliseconds(50);
+            options.EnqueueWaitTimeout = TimeSpan.FromMilliseconds(50);
+        });
+
+        try
+        {
+            var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("TimeoutFlush");
+            var control = services.GetRequiredService<ISpectreConsoleLoggerControl>();
+            logger.LogInformation("blocked");
+
+            var flush = control.FlushAsync();
+            await services.DisposeAsync();
+
+            await flush.WaitAsync(TimeSpan.FromSeconds(1));
+        }
+        finally
+        {
+            console.Release();
+            await services.DisposeAsync();
+        }
+    }
+
     private static ServiceProvider BuildServices(
         IAnsiConsole console,
         WriteMode writeMode = WriteMode.Background,

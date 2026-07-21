@@ -40,9 +40,27 @@ internal sealed class SynchronousWriter : ILogEntryWriter
             return Task.FromCanceled(cancellationToken);
         }
 
-        lock (SynchronizationLock)
+        if (Monitor.TryEnter(SynchronizationLock))
         {
+            Monitor.Exit(SynchronizationLock);
             return Task.CompletedTask;
+        }
+
+        return WaitForSynchronizationAsync(cancellationToken);
+    }
+
+    private async Task WaitForSynchronizationAsync(CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (Monitor.TryEnter(SynchronizationLock))
+            {
+                Monitor.Exit(SynchronizationLock);
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken).ConfigureAwait(false);
         }
     }
 
