@@ -320,16 +320,17 @@ public class CiRendererTests
     }
 
     [Test]
-    public async Task GitHubActions_long_mask_is_registered_as_complete_raw_chunks()
+    public async Task GitHubActions_long_mask_is_registered_in_full_and_as_raw_chunks()
     {
         var secret = new string('s', 5_000);
         var output = await CaptureMaskedSecretAsync(secret, consoleWidth: 80);
         var lines = GetPhysicalLines(output);
         var maskLines = GetMaskLines(output);
 
-        await Assert.That(maskLines).Count().IsGreaterThan(1);
+        await Assert.That(maskLines).Count().IsGreaterThan(2);
+        await Assert.That(maskLines[0]).IsEqualTo(AddMaskPrefix + secret);
 
-        var registeredValue = string.Concat(maskLines.Select(line => line[AddMaskPrefix.Length..]));
+        var registeredValue = string.Concat(maskLines.Skip(1).Select(line => line[AddMaskPrefix.Length..]));
         await Assert.That(registeredValue).IsEqualTo(secret);
 
         foreach (var line in lines.Where(line => !line.StartsWith(AddMaskPrefix, StringComparison.Ordinal)))

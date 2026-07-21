@@ -31,6 +31,10 @@ internal sealed class GitHubActionsRenderer : CiRendererBase
         {
             var newlineIndex = remaining.IndexOfAny('\r', '\n');
             var line = newlineIndex >= 0 ? remaining[..newlineIndex] : remaining;
+            if (line.Length > MaskChunkLength)
+            {
+                WriteMask(writer, line);
+            }
             WriteMaskChunks(writer, line);
 
             if (newlineIndex < 0)
@@ -59,10 +63,15 @@ internal sealed class GitHubActionsRenderer : CiRendererBase
                 chunkLength--;
             }
 
-            writer.Write(AddMaskPrefix);
-            WriteWorkflowCommandValue(writer, value[..chunkLength]);
+            WriteMask(writer, value[..chunkLength]);
             value = value[chunkLength..];
         }
+    }
+
+    private static void WriteMask(TextWriter writer, ReadOnlySpan<char> value)
+    {
+        writer.Write(AddMaskPrefix);
+        WriteWorkflowCommandValue(writer, value);
     }
 
     private static void WriteWorkflowCommandValue(TextWriter writer, ReadOnlySpan<char> value)
