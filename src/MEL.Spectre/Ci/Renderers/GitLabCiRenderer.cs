@@ -18,12 +18,12 @@ internal sealed class GitLabCiRenderer : CiRendererBase
     public override void OpenScope(IAnsiConsole console, ScopeFrame frame, int depth)
     {
         var ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        console.WriteLine($"section_start:{ts}:scope_{frame.Id}[collapsed=true]{ClearLine}{frame.Label}");
+        WriteCommand(console, $"section_start:{ts}:scope_{frame.Id}[collapsed=true]{ClearLine}{frame.Label}");
     }
 
     public override void CloseScope(IAnsiConsole console, ScopeFrame frame, int depth)
     {
         var ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        console.WriteLine($"section_end:{ts}:scope_{frame.Id}{ClearLine}");
+        WriteCommand(console, $"section_end:{ts}:scope_{frame.Id}{ClearLine}");
     }
 }

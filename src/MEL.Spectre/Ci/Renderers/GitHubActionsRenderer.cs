@@ -15,17 +15,17 @@ internal sealed class GitHubActionsRenderer : CiRendererBase
 
     public override void EmitMask(IAnsiConsole console, string value)
     {
-        console.WriteLine($"::add-mask::{value}");
+        WriteCommand(console, $"::add-mask::{value}");
     }
 
     public override void OpenScope(IAnsiConsole console, ScopeFrame frame, int depth)
     {
-        console.WriteLine($"::group::{frame.Label}");
+        WriteCommand(console, $"::group::{frame.Label}");
     }
 
     public override void CloseScope(IAnsiConsole console, ScopeFrame frame, int depth)
     {
-        console.WriteLine("::endgroup::");
+        WriteCommand(console, "::endgroup::");
     }
 
     protected override string? BuildLevelAnnotationPrefix(CiAnnotation annotation) => annotation switch
