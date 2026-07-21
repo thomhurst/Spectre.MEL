@@ -249,6 +249,19 @@ public class CiRendererTests
     }
 
     [Test]
+    public async Task Ci_annotation_default_uses_message_only_for_custom_template()
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.GitHubActions, logger =>
+        {
+            logger.LogWarning("watch out");
+        }, o => o.Template = "{Timestamp:HH:mm:ss} {Category} {Level:u5} - {Message}");
+
+        await Assert.That(output).Contains("::warning::watch out");
+        await Assert.That(output).DoesNotContain(" - watch out");
+        await Assert.That(output).DoesNotContain("MEL.Spectre.Tests");
+    }
+
+    [Test]
     public async Task GitHubActions_annotation_payload_is_plain_text()
     {
         var output = await LogTestHarness.CaptureAsync(CiMode.GitHubActions, logger =>

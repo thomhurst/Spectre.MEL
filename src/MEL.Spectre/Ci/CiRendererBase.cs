@@ -38,7 +38,9 @@ internal abstract class CiRendererBase : ICiRenderer
         var annotation = GetLevelAnnotation(entry.Level);
         var prefix = annotation is null ? null : BuildLevelAnnotationPrefix(annotation.Value);
         var suppressLevel = prefix is not null && _context.SuppressInlineLevelOnCiAnnotation;
-        var markup = _context.Formatter.Format(entry, maskValues, suppressLevel);
+        var markup = suppressLevel
+            ? _context.Formatter.FormatMessage(entry, maskValues)
+            : _context.Formatter.Format(entry, maskValues);
 
         if (Capabilities.SupportsMasking)
         {
