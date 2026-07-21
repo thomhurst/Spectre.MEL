@@ -280,6 +280,23 @@ public class CiRendererTests
     }
 
     [Test]
+    public async Task GitHubActions_long_mask_command_is_one_physical_line()
+    {
+        var secret = "Bearer " + new string('s', 200);
+        var output = await CaptureAtWidthAsync(
+            CiMode.GitHubActions,
+            20,
+            logger => logger.LogInformation("Auth {Authorization}", secret));
+
+        var maskLines = GetPhysicalLines(output)
+            .Where(line => line.StartsWith("::add-mask::", StringComparison.Ordinal))
+            .ToArray();
+
+        await Assert.That(maskLines).Count().IsEqualTo(1);
+        await Assert.That(maskLines[0]).IsEqualTo("::add-mask::" + secret);
+    }
+
+    [Test]
     public async Task GitHubActions_long_group_command_is_one_physical_line()
     {
         var label = new string('g', 200);

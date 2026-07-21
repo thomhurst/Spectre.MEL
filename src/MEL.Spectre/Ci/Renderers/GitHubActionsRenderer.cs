@@ -15,7 +15,7 @@ internal sealed class GitHubActionsRenderer : CiRendererBase
 
     public override void EmitMask(IAnsiConsole console, string value)
     {
-        console.WriteLine($"::add-mask::{value}");
+        WriteCommand(console, $"::add-mask::{value}");
     }
 
     public override void OpenScope(IAnsiConsole console, ScopeFrame frame, int depth)
