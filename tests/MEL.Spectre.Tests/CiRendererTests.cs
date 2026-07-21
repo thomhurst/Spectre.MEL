@@ -367,6 +367,16 @@ public class CiRendererTests
     }
 
     [Test]
+    public async Task GitHubActions_multiline_mask_does_not_register_tiny_physical_lines()
+    {
+        var output = await CaptureMaskedSecretAsync("{\nsecret-value\n  a  \n}", consoleWidth: 5);
+        var maskLines = GetMaskLines(output);
+
+        await Assert.That(maskLines).Count().IsEqualTo(1);
+        await Assert.That(maskLines[0]).IsEqualTo(AddMaskPrefix + "secret-value");
+    }
+
+    [Test]
     public async Task GitHubActions_long_group_command_is_one_physical_line()
     {
         var label = new string('g', 200);

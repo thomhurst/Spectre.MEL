@@ -7,6 +7,8 @@ internal sealed class GitHubActionsRenderer : CiRendererBase
 {
     private const string AddMaskPrefix = "::add-mask::";
     private const int MaskChunkLength = 1_000;
+    // The runner also registers every trimmed physical line from a multiline mask.
+    private const int MinimumMultilineMaskLineLength = 4;
 
     public GitHubActionsRenderer(RendererContext context) : base(context)
     {
@@ -27,7 +29,8 @@ internal sealed class GitHubActionsRenderer : CiRendererBase
             return;
         }
 
-        if (remaining.IndexOfAny('\r', '\n') >= 0)
+        var isMultiline = remaining.IndexOfAny('\r', '\n') >= 0;
+        if (isMultiline && CanRegisterCompleteMultilineMask(remaining))
         {
             WriteMask(writer, remaining);
         }
@@ -36,11 +39,14 @@ internal sealed class GitHubActionsRenderer : CiRendererBase
         {
             var newlineIndex = remaining.IndexOfAny('\r', '\n');
             var line = newlineIndex >= 0 ? remaining[..newlineIndex] : remaining;
-            if (line.Length > MaskChunkLength)
+            if (!isMultiline || IsSafeMultilineMaskLine(line))
             {
-                WriteMask(writer, line);
+                if (line.Length > MaskChunkLength)
+                {
+                    WriteMask(writer, line);
+                }
+                WriteMaskChunks(writer, line);
             }
-            WriteMaskChunks(writer, line);
 
             if (newlineIndex < 0)
             {
@@ -55,6 +61,35 @@ internal sealed class GitHubActionsRenderer : CiRendererBase
             remaining = remaining[(newlineIndex + newlineLength)..];
         }
     }
+
+    private static bool CanRegisterCompleteMultilineMask(ReadOnlySpan<char> value)
+    {
+        while (true)
+        {
+            var newlineIndex = value.IndexOfAny('\r', '\n');
+            var line = newlineIndex >= 0 ? value[..newlineIndex] : value;
+            var trimmedLineLength = line.Trim().Length;
+            if (trimmedLineLength is > 0 and < MinimumMultilineMaskLineLength)
+            {
+                return false;
+            }
+
+            if (newlineIndex < 0)
+            {
+                return true;
+            }
+
+            var newlineLength = value[newlineIndex] == '\r'
+                && newlineIndex + 1 < value.Length
+                && value[newlineIndex + 1] == '\n'
+                    ? 2
+                    : 1;
+            value = value[(newlineIndex + newlineLength)..];
+        }
+    }
+
+    private static bool IsSafeMultilineMaskLine(ReadOnlySpan<char> line) =>
+        line.Trim().Length >= MinimumMultilineMaskLineLength;
 
     private static void WriteMaskChunks(TextWriter writer, ReadOnlySpan<char> value)
     {
