@@ -340,6 +340,20 @@ public class CiRendererTests
     }
 
     [Test]
+    public async Task GitHubActions_long_mask_overlaps_short_final_chunk()
+    {
+        var secret = new string('s', 1_000) + "a";
+        var output = await CaptureMaskedSecretAsync(secret, consoleWidth: 80);
+        var maskLines = GetMaskLines(output);
+
+        await Assert.That(maskLines).Count().IsEqualTo(3);
+        await Assert.That(maskLines[0]).IsEqualTo(AddMaskPrefix + secret);
+        await Assert.That(maskLines[1]).IsEqualTo(AddMaskPrefix + secret[..1_000]);
+        await Assert.That(maskLines[2]).IsEqualTo(AddMaskPrefix + secret[^1_000..]);
+        await Assert.That(maskLines).DoesNotContain(AddMaskPrefix + "a");
+    }
+
+    [Test]
     public async Task GitHubActions_multiline_mask_registers_each_line_raw()
     {
         var output = await CaptureMaskedSecretAsync("first\nsecond\r\nthird", consoleWidth: 5);

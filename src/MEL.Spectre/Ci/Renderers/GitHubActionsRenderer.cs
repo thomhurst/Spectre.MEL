@@ -53,18 +53,37 @@ internal sealed class GitHubActionsRenderer : CiRendererBase
 
     private static void WriteMaskChunks(TextWriter writer, ReadOnlySpan<char> value)
     {
-        while (!value.IsEmpty)
+        while (value.Length > MaskChunkLength)
         {
-            var chunkLength = Math.Min(MaskChunkLength, value.Length);
-            if (chunkLength < value.Length
-                && char.IsHighSurrogate(value[chunkLength - 1])
+            var chunkLength = MaskChunkLength;
+            if (char.IsHighSurrogate(value[chunkLength - 1])
                 && char.IsLowSurrogate(value[chunkLength]))
             {
                 chunkLength--;
             }
 
             WriteMask(writer, value[..chunkLength]);
+
+            if (value.Length - chunkLength < MaskChunkLength)
+            {
+                var finalStart = value.Length - MaskChunkLength;
+                if (finalStart > 0
+                    && char.IsLowSurrogate(value[finalStart])
+                    && char.IsHighSurrogate(value[finalStart - 1]))
+                {
+                    finalStart--;
+                }
+
+                WriteMask(writer, value[finalStart..]);
+                return;
+            }
+
             value = value[chunkLength..];
+        }
+
+        if (!value.IsEmpty)
+        {
+            WriteMask(writer, value);
         }
     }
 
