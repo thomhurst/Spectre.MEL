@@ -49,31 +49,57 @@ internal sealed class SecretMasker
     public bool TryMaskValuePatterns(string value, List<string> maskValueSink, out string maskedValue)
     {
         maskedValue = value;
-        var found = false;
+        var ranges = new List<MaskRange>();
 
         for (var patternIndex = 0; patternIndex < _valuePatterns.Length; patternIndex++)
         {
-            var matches = _valuePatterns[patternIndex].Matches(maskedValue);
-            if (matches.Count == 0)
+            foreach (Match match in _valuePatterns[patternIndex].Matches(value))
             {
+                ranges.Add(new MaskRange(match.Index, match.Index + match.Length));
+                maskValueSink.Add(match.Value);
+            }
+        }
+
+        if (ranges.Count == 0)
+        {
+            return false;
+        }
+
+        ranges.Sort(static (left, right) =>
+        {
+            var byStart = left.Start.CompareTo(right.Start);
+            return byStart != 0 ? byStart : right.End.CompareTo(left.End);
+        });
+
+        var mergedRanges = new List<MaskRange>(ranges.Count);
+        for (var i = 0; i < ranges.Count; i++)
+        {
+            var range = ranges[i];
+            if (mergedRanges.Count > 0 && range.Start <= mergedRanges[^1].End)
+            {
+                var previous = mergedRanges[^1];
+                if (range.End > previous.End)
+                {
+                    mergedRanges[^1] = previous with { End = range.End };
+                }
                 continue;
             }
 
-            var builder = new StringBuilder(maskedValue.Length);
-            var position = 0;
-            foreach (Match match in matches)
-            {
-                builder.Append(maskedValue, position, match.Index - position);
-                builder.Append(MaskedToken);
-                maskValueSink.Add(match.Value);
-                position = match.Index + match.Length;
-            }
-            builder.Append(maskedValue, position, maskedValue.Length - position);
-            maskedValue = builder.ToString();
-            found = true;
+            mergedRanges.Add(range);
         }
 
-        return found;
+        var builder = new StringBuilder(value.Length);
+        var position = 0;
+        for (var i = 0; i < mergedRanges.Count; i++)
+        {
+            var range = mergedRanges[i];
+            builder.Append(value, position, range.Start - position);
+            builder.Append(MaskedToken);
+            position = range.End;
+        }
+        builder.Append(value, position, value.Length - position);
+        maskedValue = builder.ToString();
+        return true;
     }
 
     private bool MatchNamePatterns(string name)
@@ -105,4 +131,6 @@ internal sealed class SecretMasker
         }
         return _emitted.TryAdd(value, 0);
     }
+
+    private readonly record struct MaskRange(int Start, int End);
 }

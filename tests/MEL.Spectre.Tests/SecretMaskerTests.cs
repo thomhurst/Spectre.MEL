@@ -127,6 +127,19 @@ public class SecretMaskerTests
     }
 
     [Test]
+    public async Task TryMaskValuePatterns_does_not_match_synthetic_replacement_text()
+    {
+        var masker = new SecretMasker([], ["secret", @"\*\*\*"], 256);
+        var collected = new List<string>();
+
+        var found = masker.TryMaskValuePatterns("secret visible", collected, out var masked);
+
+        await Assert.That(found).IsTrue();
+        await Assert.That(masked).IsEqualTo("*** visible");
+        await Assert.That(collected).IsEquivalentTo(["secret"]);
+    }
+
+    [Test]
     public async Task Respects_cache_capacity()
     {
         var masker = new SecretMasker(["(?i)password"], valueCacheCapacity: 2);
