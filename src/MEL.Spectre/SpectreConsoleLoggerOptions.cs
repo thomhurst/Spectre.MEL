@@ -120,6 +120,13 @@ public sealed class SpectreConsoleLoggerOptions
         @"(?s-i:-----BEGIN (?<pem>[A-Z ]*PRIVATE KEY)-----.*?(?:-----END \k<pem>-----|\z))",
     ];
 
+    /// <summary>
+    /// When true, value patterns also scan literal and pre-formatted message text, catching secrets
+    /// embedded through string interpolation. Disable to retain placeholder-only value scanning.
+    /// Snapshotted at provider construction. Defaults to true.
+    /// </summary>
+    public bool MaskValuePatternsInMessageText { get; set; } = true;
+
     public IAnsiConsole? Console { get; set; }
 
     public TimeSpan ShutdownDrainTimeout { get; set; } = TimeSpan.FromSeconds(5);

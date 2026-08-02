@@ -155,11 +155,14 @@ command.
 Placeholders whose name matches any of the configured regex patterns are
 rendered as `***`. On GitHub Actions, MEL.Spectre also emits `::add-mask::`
 once per distinct value so the unmasked value is redacted from subsequent
-build steps. Placeholder values also use mutable `MaskedValuePatterns`
-defaults for well-known GitHub, GitLab, AWS, Slack, JWT, and private-key
-formats. These patterns scan placeholder string values and rendered exception
-text; exception matches are masked before output and registered with supported
-CI runners.
+build steps. Mutable `MaskedValuePatterns` defaults detect well-known GitHub,
+GitLab, AWS, Slack, JWT, and private-key formats. By default they scan both
+placeholder string values and final visible message text, covering secrets
+embedded through string interpolation or a pre-formatted message. They also
+scan rendered exception text; exception matches are masked before output and
+registered with supported CI runners. Set
+`MaskValuePatternsInMessageText = false` to retain placeholder-only behavior
+when the per-message regex cost is undesirable.
 
 ```csharp
 builder.AddSpectreConsole(o =>
@@ -171,7 +174,8 @@ builder.AddSpectreConsole(o =>
 
 > Both pattern lists are snapshotted at provider construction; mutations
 > after the provider starts are ignored. Clear either mutable list during
-> configuration to disable its defaults.
+> configuration to disable its defaults. `MaskValuePatternsInMessageText` is
+> also snapshotted when the provider starts.
 
 ## Embedded ANSI from child processes
 

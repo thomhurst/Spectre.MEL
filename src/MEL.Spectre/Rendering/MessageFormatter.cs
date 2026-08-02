@@ -8,11 +8,14 @@ namespace MEL.Spectre.Rendering;
 
 internal static class MessageFormatter
 {
-    public static string Render(string? originalFormat, string fallback, Placeholder[] placeholders, SpectreTheme theme, SecretMasker masker, List<string>? collectMaskValues = null, bool allowMarkupInTemplate = false, EmbeddedAnsiMode embeddedAnsi = EmbeddedAnsiMode.Convert)
+    public static string Render(string? originalFormat, string fallback, Placeholder[] placeholders, SpectreTheme theme, SecretMasker masker, List<string>? collectMaskValues = null, bool allowMarkupInTemplate = false, EmbeddedAnsiMode embeddedAnsi = EmbeddedAnsiMode.Convert, bool maskValuePatternsInMessageText = true)
     {
         if (string.IsNullOrEmpty(originalFormat))
         {
-            return AnsiSanitizer.EscapeAndSanitize(fallback, embeddedAnsi, escapeMarkup: !allowMarkupInTemplate);
+            var renderedFallback = AnsiSanitizer.EscapeAndSanitize(fallback, embeddedAnsi, escapeMarkup: !allowMarkupInTemplate);
+            return maskValuePatternsInMessageText && masker.HasValuePatterns
+                ? MaskMessageText(renderedFallback, masker, collectMaskValues)
+                : renderedFallback;
         }
 
         var builder = new StringBuilder(originalFormat.Length + 32);
@@ -143,8 +146,636 @@ internal static class MessageFormatter
         }
 
         ansi.Flush(builder);
+        var renderedMessage = builder.ToString();
+        return maskValuePatternsInMessageText && masker.HasValuePatterns
+            ? MaskMessageText(renderedMessage, masker, collectMaskValues)
+            : renderedMessage;
+    }
+
+    private static string MaskMessageText(string rendered, SecretMasker masker, List<string>? collectMaskValues)
+    {
+        string plainText;
+        try
+        {
+            plainText = rendered.IndexOfAny('[', ']') >= 0
+                ? Markup.Remove(rendered)
+                : rendered;
+        }
+        catch (InvalidOperationException)
+        {
+            // Raw message markup is validated by the renderer before any output. Leave malformed
+            // markup unchanged so that validation can select the escaped fallback path.
+            return rendered;
+        }
+        var emissionMaskedRendered = MaskAnsiStringPayloads(
+            MaskMarkupLinkTargets(rendered, masker, collectMaskValues),
+            masker,
+            collectMaskValues);
+        if (AnsiSanitizer.ContainsAnsi(plainText))
+        {
+            plainText = StripAnsiForMasking(plainText);
+        }
+        var hasBackspace = plainText.Contains('\b');
+        plainText = NormalizeInvisibleControls(plainText);
+
+        var ranges = masker.GetValuePatternMaskRanges(plainText, collectMaskValues);
+        if (ranges.Count == 0)
+        {
+            return emissionMaskedRendered;
+        }
+
+        return hasBackspace ? "***" : MaskRenderedText(emissionMaskedRendered, ranges);
+    }
+
+    private static string MaskMarkupLinkTargets(string rendered, SecretMasker masker, List<string>? collectMaskValues)
+    {
+        StringBuilder? builder = null;
+        var copiedLength = 0;
+
+        for (var i = 0; i < rendered.Length;)
+        {
+            if (!TryReadMarkupTag(rendered, i, out var tagEnd))
+            {
+                i++;
+                continue;
+            }
+
+            if (TryFindMarkupLinkTarget(rendered, i, tagEnd, out var targetStart, out var targetEnd))
+            {
+                var target = rendered[targetStart..targetEnd];
+                var logicalTarget = target.IndexOfAny('[', ']') >= 0
+                    ? Markup.Remove(target)
+                    : target;
+                var maskedTarget = masker.MaskValuePatterns(logicalTarget, collectMaskValues);
+                if (!string.Equals(logicalTarget, maskedTarget, StringComparison.Ordinal))
+                {
+                    builder ??= new StringBuilder(rendered.Length);
+                    builder.Append(rendered, copiedLength, targetStart - copiedLength);
+                    builder.Append(Markup.Escape(maskedTarget));
+                    copiedLength = targetEnd;
+                }
+            }
+
+            i = tagEnd;
+        }
+
+        if (builder is null)
+        {
+            return rendered;
+        }
+
+        builder.Append(rendered, copiedLength, rendered.Length - copiedLength);
         return builder.ToString();
     }
+
+    private static string MaskAnsiStringPayloads(string rendered, SecretMasker masker, List<string>? collectMaskValues)
+    {
+        StringBuilder? builder = null;
+        var copiedLength = 0;
+
+        for (var i = 0; i < rendered.Length;)
+        {
+            if (!TryReadAnsiStringControl(rendered, i, out var payloadStart, out var payloadEnd, out var sequenceEnd))
+            {
+                i++;
+                continue;
+            }
+
+            var payload = rendered[payloadStart..payloadEnd];
+            string logicalPayload;
+            try
+            {
+                logicalPayload = payload.IndexOfAny('[', ']') >= 0 ? Markup.Remove(payload) : payload;
+            }
+            catch (InvalidOperationException)
+            {
+                logicalPayload = payload;
+            }
+            var ranges = masker.GetValuePatternMaskRanges(logicalPayload, collectMaskValues);
+            var maskedPayload = ranges.Count == 0 ? payload : MaskRenderedText(payload, ranges);
+            if (!string.Equals(payload, maskedPayload, StringComparison.Ordinal))
+            {
+                builder ??= new StringBuilder(rendered.Length);
+                builder.Append(rendered, copiedLength, payloadStart - copiedLength);
+                builder.Append(maskedPayload);
+                copiedLength = payloadEnd;
+            }
+            i = sequenceEnd > i ? sequenceEnd : i + 1;
+        }
+
+        if (builder is null)
+        {
+            return rendered;
+        }
+
+        builder.Append(rendered, copiedLength, rendered.Length - copiedLength);
+        return builder.ToString();
+    }
+
+    private static string MaskRenderedText(string rendered, List<SecretMasker.MaskRange> ranges)
+    {
+        var droppedTags = FindFullyMaskedMarkupTags(rendered, ranges);
+        var rewrittenAnsi = RewriteMaskedAnsiSequences(rendered, ranges);
+        var builder = new StringBuilder(rendered.Length);
+        var visibleIndex = 0;
+        var rangeIndex = 0;
+        var ansi = new AnsiMarkupState();
+
+        for (var i = 0; i < rendered.Length;)
+        {
+            if (TryReadMarkupTag(rendered, i, out var tagEnd))
+            {
+                if (!droppedTags.Contains(i))
+                {
+                    builder.Append(rendered, i, tagEnd - i);
+                }
+                i = tagEnd;
+                continue;
+            }
+
+            if (AnsiSanitizer.IsSequenceIntroducer(rendered[i]))
+            {
+                var sequenceStart = i;
+                ConsumeRenderedAnsiSequence(rendered, ref i, ref ansi);
+                if (rewrittenAnsi.TryGetValue(sequenceStart, out var replacement))
+                {
+                    builder.Append(replacement);
+                }
+                else
+                {
+                    builder.Append(rendered, sequenceStart, i - sequenceStart);
+                }
+                continue;
+            }
+
+            if (IsDroppedControl(rendered[i]))
+            {
+                i++;
+                continue;
+            }
+
+            var rawLength = i + 1 < rendered.Length &&
+                ((rendered[i] == '[' && rendered[i + 1] == '[') ||
+                 (rendered[i] == ']' && rendered[i + 1] == ']'))
+                ? 2
+                : 1;
+
+            while (rangeIndex < ranges.Count && visibleIndex >= ranges[rangeIndex].End)
+            {
+                rangeIndex++;
+            }
+
+            if (rangeIndex < ranges.Count && visibleIndex == ranges[rangeIndex].Start)
+            {
+                builder.Append("***");
+            }
+
+            if (rangeIndex >= ranges.Count || visibleIndex < ranges[rangeIndex].Start)
+            {
+                builder.Append(rendered, i, rawLength);
+            }
+
+            visibleIndex++;
+            i += rawLength;
+        }
+
+        if (rangeIndex < ranges.Count && visibleIndex == ranges[rangeIndex].Start)
+        {
+            builder.Append("***");
+        }
+
+        return builder.ToString();
+    }
+
+    private static HashSet<int> FindFullyMaskedMarkupTags(string rendered, List<SecretMasker.MaskRange> ranges)
+    {
+        var dropped = new HashSet<int>();
+        var openTags = new Stack<(int RawIndex, int VisibleIndex)>();
+        var visibleIndex = 0;
+        var ansi = new AnsiMarkupState();
+
+        for (var i = 0; i < rendered.Length;)
+        {
+            if (TryReadMarkupTag(rendered, i, out var tagEnd))
+            {
+                if (rendered.AsSpan(i).StartsWith("[/]", StringComparison.Ordinal))
+                {
+                    if (openTags.TryPop(out var openTag) && IsFullyCovered(openTag.VisibleIndex, visibleIndex, ranges))
+                    {
+                        dropped.Add(openTag.RawIndex);
+                        dropped.Add(i);
+                    }
+                }
+                else
+                {
+                    openTags.Push((i, visibleIndex));
+                }
+                i = tagEnd;
+                continue;
+            }
+
+            if (AnsiSanitizer.IsSequenceIntroducer(rendered[i]))
+            {
+                ConsumeRenderedAnsiSequence(rendered, ref i, ref ansi);
+                continue;
+            }
+
+            if (IsDroppedControl(rendered[i]))
+            {
+                i++;
+                continue;
+            }
+
+            i += i + 1 < rendered.Length &&
+                ((rendered[i] == '[' && rendered[i + 1] == '[') ||
+                 (rendered[i] == ']' && rendered[i + 1] == ']'))
+                ? 2
+                : 1;
+            visibleIndex++;
+        }
+
+        return dropped;
+    }
+
+    private static Dictionary<int, string> RewriteMaskedAnsiSequences(string rendered, List<SecretMasker.MaskRange> ranges)
+    {
+        var rewritten = new Dictionary<int, string>();
+        List<int>? activeSequences = null;
+        string? activeResetReplacement = null;
+        string? activeRestoreSequence = null;
+        var styleReplay = string.Empty;
+        var activeStart = 0;
+        var visibleIndex = 0;
+        var ansi = new AnsiMarkupState();
+
+        for (var i = 0; i < rendered.Length;)
+        {
+            if (TryReadMarkupTag(rendered, i, out var tagEnd))
+            {
+                i = tagEnd;
+                continue;
+            }
+
+            if (AnsiSanitizer.IsSequenceIntroducer(rendered[i]))
+            {
+                var sequenceStart = i;
+                var preserveOsc8 = IsOsc8Sequence(rendered, sequenceStart);
+                var wasActive = ansi.HasActiveStyle;
+                var replayBefore = styleReplay;
+                ConsumeRenderedAnsiSequence(rendered, ref i, ref ansi, trackStyle: true);
+                var isActive = ansi.HasActiveStyle;
+                var sequence = rendered[sequenceStart..i];
+
+                if (ansi.LastSequenceReset)
+                {
+                    styleReplay = isActive ? sequence : string.Empty;
+                }
+                else if (ansi.LastSequenceChangedStyle)
+                {
+                    styleReplay += sequence;
+                }
+                if (!isActive)
+                {
+                    styleReplay = string.Empty;
+                }
+
+                if (preserveOsc8)
+                {
+                    continue;
+                }
+
+                if (wasActive && isActive && (ansi.LastSequenceReset || ansi.LastSequenceChangedStyle))
+                {
+                    var priorIsMasked = IsAnsiSpanFullyMasked(activeStart, visibleIndex, ranges);
+                    RewriteAnsiSpan(activeSequences, priorIsMasked, activeResetReplacement, rewritten);
+                    if (priorIsMasked && !ansi.LastSequenceReset && activeRestoreSequence is not null)
+                    {
+                        rewritten[sequenceStart] = activeRestoreSequence;
+                    }
+
+                    activeStart = visibleIndex;
+                    activeSequences = [sequenceStart];
+                    activeResetReplacement = priorIsMasked ? null : GetResetSequence(rendered, sequenceStart);
+                    activeRestoreSequence = ansi.LastSequenceReset
+                        ? null
+                        : priorIsMasked
+                            ? activeRestoreSequence
+                            : string.IsNullOrEmpty(replayBefore) ? null : replayBefore;
+                }
+                else if (!wasActive && isActive)
+                {
+                    activeStart = visibleIndex;
+                    activeSequences = [sequenceStart];
+                    activeResetReplacement = null;
+                    activeRestoreSequence = null;
+                }
+                else if (wasActive)
+                {
+                    activeSequences ??= [];
+                    activeSequences.Add(sequenceStart);
+                    if (!isActive)
+                    {
+                        RewriteAnsiSpan(activeSequences, IsAnsiSpanFullyMasked(activeStart, visibleIndex, ranges), activeResetReplacement, rewritten);
+                        activeSequences = null;
+                        activeResetReplacement = null;
+                        activeRestoreSequence = null;
+                    }
+                }
+                else if (IsInsideOrAtRangeBoundary(visibleIndex, ranges))
+                {
+                    rewritten[sequenceStart] = string.Empty;
+                }
+                continue;
+            }
+
+            if (IsDroppedControl(rendered[i]))
+            {
+                i++;
+                continue;
+            }
+
+            i += i + 1 < rendered.Length &&
+                ((rendered[i] == '[' && rendered[i + 1] == '[') ||
+                 (rendered[i] == ']' && rendered[i + 1] == ']'))
+                ? 2
+                : 1;
+            visibleIndex++;
+        }
+
+        if (activeSequences is not null)
+        {
+            RewriteAnsiSpan(activeSequences, IsAnsiSpanFullyMasked(activeStart, visibleIndex, ranges), activeResetReplacement, rewritten);
+        }
+
+        return rewritten;
+    }
+
+    private static bool IsOsc8Sequence(string rendered, int start) =>
+        TryReadAnsiStringControl(rendered, start, out var payloadStart, out var payloadEnd, out _) &&
+        rendered.AsSpan(payloadStart, payloadEnd - payloadStart).StartsWith("8;", StringComparison.Ordinal);
+
+    private static bool TryReadAnsiStringControl(string text, int start, out int payloadStart, out int payloadEnd, out int sequenceEnd)
+    {
+        payloadStart = payloadEnd = sequenceEnd = start;
+        var belTerminates = false;
+
+        if (text[start] == AnsiSanitizer.EscapeChar)
+        {
+            if (start + 1 >= text.Length)
+            {
+                return false;
+            }
+
+            belTerminates = text[start + 1] == ']';
+            if (!belTerminates && text[start + 1] is not ('P' or 'X' or '^' or '_'))
+            {
+                return false;
+            }
+            payloadStart = start + 2;
+            if (belTerminates && payloadStart < text.Length && text[payloadStart] == ']')
+            {
+                payloadStart++;
+            }
+        }
+        else
+        {
+            belTerminates = text[start] == '\x9d';
+            if (!belTerminates && text[start] is not ('\x90' or '\x98' or '\x9e' or '\x9f'))
+            {
+                return false;
+            }
+            payloadStart = start + 1;
+        }
+
+        for (var i = payloadStart; i < text.Length; i++)
+        {
+            if (text[i] == '\x9c' || (belTerminates && text[i] == '\x07'))
+            {
+                payloadEnd = i;
+                sequenceEnd = i + 1;
+                return true;
+            }
+            if (text[i] == AnsiSanitizer.EscapeChar)
+            {
+                payloadEnd = i;
+                sequenceEnd = i + 1 < text.Length && text[i + 1] == '\\' ? i + 2 : i;
+                return true;
+            }
+        }
+
+        payloadEnd = sequenceEnd = text.Length;
+        return true;
+    }
+
+    private static void RewriteAnsiSpan(List<int>? sequences, bool isFullyMasked, string? resetReplacement, Dictionary<int, string> rewritten)
+    {
+        if (!isFullyMasked || sequences is null)
+        {
+            return;
+        }
+
+        for (var i = 0; i < sequences.Count; i++)
+        {
+            rewritten[sequences[i]] = string.Empty;
+        }
+        if (resetReplacement is not null)
+        {
+            rewritten[sequences[0]] = resetReplacement;
+        }
+    }
+
+    private static string GetResetSequence(string rendered, int start) =>
+        rendered[start] == AnsiSanitizer.CsiChar
+            ? "\x9b0m"
+            : start + 2 < rendered.Length && rendered[start + 1] == '[' && rendered[start + 2] == '['
+                ? "\x1b[[0m"
+                : "\x1b[0m";
+
+    private static bool TryFindMarkupLinkTarget(
+        string text,
+        int tagStart,
+        int tagEnd,
+        out int targetStart,
+        out int targetEnd)
+    {
+        var tagContentEnd = tagEnd - 1;
+        var componentStart = tagStart + 1;
+        while (componentStart < tagContentEnd)
+        {
+            while (componentStart < tagContentEnd && text[componentStart] == ' ')
+            {
+                componentStart++;
+            }
+
+            var componentEnd = componentStart;
+            while (componentEnd < tagContentEnd && text[componentEnd] != ' ')
+            {
+                componentEnd++;
+            }
+
+            if (componentEnd - componentStart > 5
+                && text.AsSpan(componentStart, 5).Equals("link=", StringComparison.OrdinalIgnoreCase))
+            {
+                targetStart = componentStart + 5;
+                targetEnd = componentEnd;
+                return true;
+            }
+
+            componentStart = componentEnd + 1;
+        }
+
+        targetStart = 0;
+        targetEnd = 0;
+        return false;
+    }
+
+    private static bool TryReadMarkupTag(string text, int start, out int end)
+    {
+        end = start;
+        if (text[start] != '[' || (start + 1 < text.Length && text[start + 1] == '['))
+        {
+            return false;
+        }
+
+        for (var i = start + 1; i < text.Length; i++)
+        {
+            if (text[i] != ']')
+            {
+                continue;
+            }
+            if (i + 1 < text.Length && text[i + 1] == ']')
+            {
+                i++;
+                continue;
+            }
+
+            end = i + 1;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsDroppedControl(char value) =>
+        char.IsControl(value) && value != '\r' && value != '\n' && value != '\t';
+
+    private static string NormalizeInvisibleControls(string text)
+    {
+        var firstControl = -1;
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (IsDroppedControl(text[i]))
+            {
+                firstControl = i;
+                break;
+            }
+        }
+
+        if (firstControl < 0)
+        {
+            return text;
+        }
+
+        var builder = new StringBuilder(text.Length);
+        builder.Append(text, 0, firstControl);
+        for (var i = firstControl; i < text.Length; i++)
+        {
+            var current = text[i];
+            if (current == '\b')
+            {
+                if (builder.Length > 0 && builder[^1] is not '\r' and not '\n')
+                {
+                    builder.Length--;
+                }
+                continue;
+            }
+
+            if (!IsDroppedControl(current))
+            {
+                builder.Append(current);
+            }
+        }
+        return builder.ToString();
+    }
+
+    private static string StripAnsiForMasking(string text)
+    {
+        var builder = new StringBuilder(text.Length);
+        var ansi = new AnsiMarkupState();
+        AnsiSanitizer.AppendSanitized(
+            builder,
+            text,
+            0,
+            ref ansi,
+            convert: false,
+            escapeMarkup: false,
+            stripControls: false);
+        return builder.ToString();
+    }
+
+    private static void ConsumeRenderedAnsiSequence(string text, ref int index, ref AnsiMarkupState ansi, bool trackStyle = false)
+    {
+        if (text[index] == AnsiSanitizer.EscapeChar &&
+            index + 2 < text.Length &&
+            text[index + 1] == '[' &&
+            text[index + 2] == '[')
+        {
+            var parameterStart = index + 3;
+            var current = parameterStart;
+            while (current < text.Length && text[current] >= '\x30' && text[current] <= '\x3f')
+            {
+                current++;
+            }
+            var parameterEnd = current;
+            while (current < text.Length && text[current] >= '\x20' && text[current] <= '\x2f')
+            {
+                current++;
+            }
+            if (trackStyle && current < text.Length && text[current] == 'm' && parameterEnd == current)
+            {
+                ansi.ApplySgrParameters(text.AsSpan(parameterStart, parameterEnd - parameterStart));
+            }
+            index = current < text.Length && text[current] >= '\x40' && text[current] <= '\x7e'
+                ? current + 1
+                : current;
+            return;
+        }
+
+        ansi.ConsumeSequence(text, ref index, convert: trackStyle);
+    }
+
+    private static bool IsFullyCovered(int start, int end, List<SecretMasker.MaskRange> ranges)
+    {
+        for (var i = 0; i < ranges.Count; i++)
+        {
+            if (ranges[i].Start <= start && ranges[i].End >= end && start < end)
+            {
+                return true;
+            }
+            if (ranges[i].Start > start)
+            {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    private static bool IsInsideOrAtRangeBoundary(int position, List<SecretMasker.MaskRange> ranges)
+    {
+        for (var i = 0; i < ranges.Count && ranges[i].Start <= position; i++)
+        {
+            if (position <= ranges[i].End)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool IsAnsiSpanFullyMasked(int start, int end, List<SecretMasker.MaskRange> ranges) =>
+        start == end
+            ? IsInsideOrAtRangeBoundary(start, ranges)
+            : IsFullyCovered(start, end, ranges);
 
     private static Placeholder FindPlaceholder(Placeholder[] placeholders, string name, ref int positionalIndex)
     {

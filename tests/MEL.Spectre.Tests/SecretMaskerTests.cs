@@ -161,6 +161,42 @@ public class SecretMaskerTests
         await Assert.That(masker.TryRegisterForEmission("c")).IsFalse();
     }
 
+    [Test]
+    public async Task Value_pattern_timeout_masks_the_whole_value()
+    {
+        var masker = new SecretMasker([], [@"(a+)+$|secret-\w+"], 256, TimeSpan.FromMilliseconds(1));
+        var value = new string('a', 10_000) + "! secret-value";
+
+        await Assert.That(masker.MaskValuePatterns(value)).IsEqualTo("***");
+    }
+
+    [Test]
+    public async Task Value_pattern_timeout_fails_closed_through_try_mask()
+    {
+        var masker = new SecretMasker([], [@"(a+)+$|secret-\w+"], 256, TimeSpan.FromMilliseconds(1));
+        var value = new string('a', 10_000) + "! secret-value";
+        var collected = new List<string>();
+
+        var matched = masker.TryMaskValuePatterns(value, collected, out var result);
+
+        await Assert.That(matched).IsTrue();
+        await Assert.That(result).IsEqualTo("***");
+        await Assert.That(collected).IsEquivalentTo([value]);
+    }
+
+    [Test]
+    public async Task Zero_length_value_pattern_masks_and_registers_the_whole_value()
+    {
+        const string Value = "prefix secret-value suffix";
+        var masker = new SecretMasker([], [@"(?=secret-\w+)"], 256);
+        var collected = new List<string>();
+
+        var result = masker.MaskValuePatterns(Value, collected);
+
+        await Assert.That(result).IsEqualTo("***");
+        await Assert.That(collected).IsEquivalentTo([Value]);
+    }
+
     private static string RenderDefaultValue(string value) =>
         MessageFormatter.Render(
             "{Output}",
