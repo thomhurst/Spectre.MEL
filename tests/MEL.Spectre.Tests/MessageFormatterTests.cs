@@ -157,6 +157,23 @@ public class MessageFormatterTests
     }
 
     [Test]
+    public async Task Value_pattern_scanning_drops_unbalanced_passthrough_ansi_around_mask()
+    {
+        var masker = new SecretMasker([], [@"secret-value"], 256);
+
+        var result = MessageFormatter.Render(
+            "\x1b[31msecret-\x1b[0mvalue tail",
+            "fallback",
+            [],
+            SpectreTheme.Monochrome,
+            masker,
+            embeddedAnsi: EmbeddedAnsiMode.Passthrough);
+
+        await Assert.That(result).IsEqualTo("*** tail");
+        await Assert.That(result).DoesNotContain("\x1b[");
+    }
+
+    [Test]
     public async Task Escapes_markup_brackets_in_literal()
     {
         var theme = SpectreTheme.Monochrome;

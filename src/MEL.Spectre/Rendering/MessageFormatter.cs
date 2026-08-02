@@ -175,6 +175,7 @@ internal static class MessageFormatter
     private static string MaskRenderedText(string rendered, List<SecretMasker.MaskRange> ranges)
     {
         var droppedTags = FindFullyMaskedMarkupTags(rendered, ranges);
+        var dropAnsi = HasAnsiSequenceInMask(rendered, ranges);
         var builder = new StringBuilder(rendered.Length);
         var visibleIndex = 0;
         var rangeIndex = 0;
@@ -196,7 +197,7 @@ internal static class MessageFormatter
             {
                 var sequenceStart = i;
                 ConsumeRenderedAnsiSequence(rendered, ref i, ref ansi);
-                if (!IsStrictlyInsideRange(visibleIndex, ranges, rangeIndex))
+                if (!dropAnsi)
                 {
                     builder.Append(rendered, sequenceStart, i - sequenceStart);
                 }
@@ -292,6 +293,47 @@ internal static class MessageFormatter
         return dropped;
     }
 
+    private static bool HasAnsiSequenceInMask(string rendered, List<SecretMasker.MaskRange> ranges)
+    {
+        var visibleIndex = 0;
+        var ansi = new AnsiMarkupState();
+
+        for (var i = 0; i < rendered.Length;)
+        {
+            if (TryReadMarkupTag(rendered, i, out var tagEnd))
+            {
+                i = tagEnd;
+                continue;
+            }
+
+            if (AnsiSanitizer.IsSequenceIntroducer(rendered[i]))
+            {
+                if (IsInsideOrAtRangeBoundary(visibleIndex, ranges))
+                {
+                    return true;
+                }
+
+                ConsumeRenderedAnsiSequence(rendered, ref i, ref ansi);
+                continue;
+            }
+
+            if (IsDroppedControl(rendered[i]))
+            {
+                i++;
+                continue;
+            }
+
+            i += i + 1 < rendered.Length &&
+                ((rendered[i] == '[' && rendered[i + 1] == '[') ||
+                 (rendered[i] == ']' && rendered[i + 1] == ']'))
+                ? 2
+                : 1;
+            visibleIndex++;
+        }
+
+        return false;
+    }
+
     private static bool TryReadMarkupTag(string text, int start, out int end)
     {
         end = start;
@@ -383,11 +425,11 @@ internal static class MessageFormatter
         return false;
     }
 
-    private static bool IsStrictlyInsideRange(int position, List<SecretMasker.MaskRange> ranges, int startIndex)
+    private static bool IsInsideOrAtRangeBoundary(int position, List<SecretMasker.MaskRange> ranges)
     {
-        for (var i = startIndex; i < ranges.Count && ranges[i].Start < position; i++)
+        for (var i = 0; i < ranges.Count && ranges[i].Start <= position; i++)
         {
-            if (position < ranges[i].End)
+            if (position <= ranges[i].End)
             {
                 return true;
             }
