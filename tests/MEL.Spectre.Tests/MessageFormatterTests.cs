@@ -173,6 +173,26 @@ public class MessageFormatterTests
     }
 
     [Test]
+    public async Task Value_pattern_scanning_uses_logical_OSC_payload_text()
+    {
+        var masker = new SecretMasker([], [@"secret\[value\]"], 256);
+        var collected = new List<string>();
+
+        var result = MessageFormatter.Render(
+            null,
+            "\x1b]8;;https://host/secret[value]\x1b\\click\x1b]8;;\x1b\\",
+            [],
+            SpectreTheme.Monochrome,
+            masker,
+            collected,
+            embeddedAnsi: EmbeddedAnsiMode.Passthrough);
+
+        await Assert.That(result).Contains("https://host/***");
+        await Assert.That(result).DoesNotContain("secret[[value]]");
+        await Assert.That(collected).Contains("secret[value]");
+    }
+
+    [Test]
     public async Task Passthrough_masking_preserves_balanced_OSC_8_sequences()
     {
         var masker = new SecretMasker([], [@"secret-value"], 256);
@@ -275,6 +295,22 @@ public class MessageFormatterTests
             embeddedAnsi: EmbeddedAnsiMode.Passthrough);
 
         await Assert.That(result).IsEqualTo("\x1b[[32msafe \x1b[[0m***");
+    }
+
+    [Test]
+    public async Task Passthrough_masking_restores_style_after_additive_span()
+    {
+        var masker = new SecretMasker([], [@"secret-value"], 256);
+
+        var result = MessageFormatter.Render(
+            null,
+            "\x1b[32msafe \x1b[1msecret-value\x1b[22m tail\x1b[0m",
+            [],
+            SpectreTheme.Monochrome,
+            masker,
+            embeddedAnsi: EmbeddedAnsiMode.Passthrough);
+
+        await Assert.That(result).IsEqualTo("\x1b[[32msafe \x1b[[0m***\x1b[[32m tail\x1b[[0m");
     }
 
     [Test]

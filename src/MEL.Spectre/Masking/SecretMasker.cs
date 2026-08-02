@@ -152,7 +152,12 @@ internal sealed class SecretMasker
             }
             catch (RegexMatchTimeoutException)
             {
-                // A user-supplied pattern must not stall the single rendering consumer.
+                // A timeout is an unknown result: fail closed instead of emitting a value that may
+                // contain a match the regex engine did not reach.
+                ranges.Clear();
+                ranges.Add(new MaskRange(0, value.Length));
+                matchedValues?.Add(value);
+                return ranges;
             }
         }
 
@@ -207,7 +212,7 @@ internal sealed class SecretMasker
         }
         catch (RegexMatchTimeoutException)
         {
-            return false;
+            return true;
         }
     }
 

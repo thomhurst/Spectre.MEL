@@ -162,12 +162,12 @@ public class SecretMaskerTests
     }
 
     [Test]
-    public async Task Value_pattern_timeout_is_treated_as_non_match()
+    public async Task Value_pattern_timeout_masks_the_whole_value()
     {
-        var masker = new SecretMasker([], ["(a+)+$"], 256, TimeSpan.FromMilliseconds(1));
-        var value = new string('a', 10_000) + "!";
+        var masker = new SecretMasker([], [@"(a+)+$|secret-\w+"], 256, TimeSpan.FromMilliseconds(1));
+        var value = new string('a', 10_000) + "! secret-value";
 
-        await Assert.That(masker.MaskValuePatterns(value)).IsEqualTo(value);
+        await Assert.That(masker.MaskValuePatterns(value)).IsEqualTo("***");
     }
 
     private static string RenderDefaultValue(string value) =>

@@ -240,7 +240,17 @@ internal static class MessageFormatter
             }
 
             var payload = rendered[payloadStart..payloadEnd];
-            var maskedPayload = masker.MaskValuePatterns(payload, collectMaskValues);
+            string logicalPayload;
+            try
+            {
+                logicalPayload = payload.IndexOfAny('[', ']') >= 0 ? Markup.Remove(payload) : payload;
+            }
+            catch (InvalidOperationException)
+            {
+                logicalPayload = payload;
+            }
+            var ranges = masker.GetValuePatternMaskRanges(logicalPayload, collectMaskValues);
+            var maskedPayload = ranges.Count == 0 ? payload : MaskRenderedText(payload, ranges);
             if (!string.Equals(payload, maskedPayload, StringComparison.Ordinal))
             {
                 builder ??= new StringBuilder(rendered.Length);
@@ -390,6 +400,8 @@ internal static class MessageFormatter
         var rewritten = new Dictionary<int, string>();
         List<int>? activeSequences = null;
         string? activeResetReplacement = null;
+        string? activeRestoreSequence = null;
+        var styleReplay = string.Empty;
         var activeStart = 0;
         var visibleIndex = 0;
         var ansi = new AnsiMarkupState();
@@ -407,8 +419,23 @@ internal static class MessageFormatter
                 var sequenceStart = i;
                 var preserveOsc8 = IsOsc8Sequence(rendered, sequenceStart);
                 var wasActive = ansi.HasActiveStyle;
+                var replayBefore = styleReplay;
                 ConsumeRenderedAnsiSequence(rendered, ref i, ref ansi, trackStyle: true);
                 var isActive = ansi.HasActiveStyle;
+                var sequence = rendered[sequenceStart..i];
+
+                if (ansi.LastSequenceReset)
+                {
+                    styleReplay = isActive ? sequence : string.Empty;
+                }
+                else if (ansi.LastSequenceChangedStyle)
+                {
+                    styleReplay += sequence;
+                }
+                if (!isActive)
+                {
+                    styleReplay = string.Empty;
+                }
 
                 if (preserveOsc8)
                 {
@@ -419,16 +446,26 @@ internal static class MessageFormatter
                 {
                     var priorIntersects = IntersectsMask(activeStart, visibleIndex, ranges);
                     RewriteAnsiSpan(activeSequences, priorIntersects, activeResetReplacement, rewritten);
+                    if (priorIntersects && !ansi.LastSequenceReset && activeRestoreSequence is not null)
+                    {
+                        rewritten[sequenceStart] = activeRestoreSequence;
+                    }
 
                     activeStart = visibleIndex;
                     activeSequences = [sequenceStart];
                     activeResetReplacement = priorIntersects ? null : GetResetSequence(rendered, sequenceStart);
+                    activeRestoreSequence = ansi.LastSequenceReset
+                        ? null
+                        : priorIntersects
+                            ? activeRestoreSequence
+                            : string.IsNullOrEmpty(replayBefore) ? null : replayBefore;
                 }
                 else if (!wasActive && isActive)
                 {
                     activeStart = visibleIndex;
                     activeSequences = [sequenceStart];
                     activeResetReplacement = null;
+                    activeRestoreSequence = null;
                 }
                 else if (wasActive)
                 {
@@ -439,6 +476,7 @@ internal static class MessageFormatter
                         RewriteAnsiSpan(activeSequences, IntersectsMask(activeStart, visibleIndex, ranges), activeResetReplacement, rewritten);
                         activeSequences = null;
                         activeResetReplacement = null;
+                        activeRestoreSequence = null;
                     }
                 }
                 else if (IsInsideOrAtRangeBoundary(visibleIndex, ranges))
