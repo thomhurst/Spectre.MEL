@@ -202,7 +202,7 @@ internal static class MessageFormatter
                 continue;
             }
 
-            if (char.IsControl(rendered[i]) && rendered[i] != '\n' && rendered[i] != '\t')
+            if (IsDroppedControl(rendered[i]))
             {
                 i++;
                 continue;
@@ -274,7 +274,7 @@ internal static class MessageFormatter
                 continue;
             }
 
-            if (char.IsControl(rendered[i]) && rendered[i] != '\n' && rendered[i] != '\t')
+            if (IsDroppedControl(rendered[i]))
             {
                 i++;
                 continue;
@@ -308,6 +308,9 @@ internal static class MessageFormatter
         end = closingBracket + 1;
         return true;
     }
+
+    private static bool IsDroppedControl(char value) =>
+        char.IsControl(value) && value != '\r' && value != '\n' && value != '\t';
 
     private static void ConsumeRenderedAnsiSequence(string text, ref int index, ref AnsiMarkupState ansi)
     {
