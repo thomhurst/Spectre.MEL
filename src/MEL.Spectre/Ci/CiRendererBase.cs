@@ -118,7 +118,14 @@ internal abstract class CiRendererBase : ICiRenderer
         var typeName = exception.GetType().FullName ?? exception.GetType().Name;
         builder.Append(typeName).Append(": ").Append(exception.Message);
 
-        if (exception.InnerException is not null)
+        if (exception is AggregateException aggregate)
+        {
+            foreach (var innerException in aggregate.InnerExceptions)
+            {
+                AppendExceptionWithoutStack(builder, innerException);
+            }
+        }
+        else if (exception.InnerException is not null)
         {
             AppendExceptionWithoutStack(builder, exception.InnerException);
         }

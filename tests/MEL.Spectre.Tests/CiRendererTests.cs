@@ -46,6 +46,22 @@ public class CiRendererTests
     }
 
     [Test]
+    public async Task Aot_exception_fallback_preserves_all_aggregate_branches()
+    {
+        var exception = new AggregateException(
+            "parallel failures",
+            new InvalidOperationException("first"),
+            new ArgumentException("second", new FormatException("nested")));
+
+        var text = CiRendererBase.FormatExceptionForAot(exception, ExceptionFormats.NoStackTrace);
+
+        await Assert.That(text).Contains("InvalidOperationException: first");
+        await Assert.That(text).Contains("ArgumentException: second");
+        await Assert.That(text).Contains("FormatException: nested");
+        await Assert.That(text).DoesNotContain(" at ");
+    }
+
+    [Test]
     public async Task AzurePipelines_emits_group_endgroup_markers()
     {
         var output = await LogTestHarness.CaptureAsync(CiMode.AzurePipelines, logger =>

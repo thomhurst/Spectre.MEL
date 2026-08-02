@@ -231,7 +231,7 @@ public class OutputImprovementsTests
         };
         var typeInfo = (JsonTypeInfo<Dictionary<string, bool>>)options.GetTypeInfo(typeof(Dictionary<string, bool>));
 
-        captured.WriteJsonPanel("Config", new Dictionary<string, bool> { ["Verbose"] = true }, typeInfo, CiMode.Off);
+        captured.WriteJsonPanelTrimSafe("Config", new Dictionary<string, bool> { ["Verbose"] = true }, typeInfo, CiMode.Off);
 
         await Assert.That(captured.Output).Contains("Verbose");
         await Assert.That(captured.Output).Contains("true");
@@ -250,9 +250,19 @@ public class OutputImprovementsTests
         var typeInfo = (JsonTypeInfo<string>)options.GetTypeInfo(typeof(string));
         string payload = null!;
 
-        captured.WriteJsonPanel("Null", payload, typeInfo, CiMode.Off);
+        captured.WriteJsonPanelTrimSafe("Null", payload, typeInfo, CiMode.Off);
 
         await Assert.That(captured.Output).Contains("custom-null");
+    }
+
+    [Test]
+    public async Task WriteJsonPanel_null_ciMode_keeps_existing_call_shape()
+    {
+        var captured = new TestConsole { Profile = { Width = 200 } };
+
+        captured.WriteJsonPanel("Config", new Dictionary<string, bool> { ["Verbose"] = true }, null);
+
+        await Assert.That(captured.Output).Contains("Verbose");
     }
 
     [Test]

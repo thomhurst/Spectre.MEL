@@ -21,8 +21,8 @@ public static class AnsiConsoleJsonExtensions
     /// Pipelines, GitLab CI), the panel is also wrapped in a collapsible group so it doesn't dominate
     /// the log scroll.
     /// </summary>
-    [RequiresUnreferencedCode("JSON serialization may require types that cannot be statically analyzed. Use the overload accepting JsonTypeInfo<T> for trim-safe serialization.")]
-    [RequiresDynamicCode("JSON serialization may require runtime code generation. Use the overload accepting JsonTypeInfo<T> for NativeAOT-safe serialization.")]
+    [RequiresUnreferencedCode("JSON serialization may require types that cannot be statically analyzed. Use WriteJsonPanelTrimSafe with JsonTypeInfo<T> for trim-safe serialization.")]
+    [RequiresDynamicCode("JSON serialization may require runtime code generation. Use WriteJsonPanelTrimSafe with JsonTypeInfo<T> for NativeAOT-safe serialization.")]
     public static void WriteJsonPanel(this IAnsiConsole console, string title, object? payload, CiMode? ciMode = null)
     {
         ArgumentNullException.ThrowIfNull(console);
@@ -38,7 +38,7 @@ public static class AnsiConsoleJsonExtensions
     /// Writes <paramref name="payload"/> as JSON using source-generated metadata inside a
     /// Spectre.Console panel with the given <paramref name="title"/>.
     /// </summary>
-    public static void WriteJsonPanel<T>(this IAnsiConsole console, string title, T payload, JsonTypeInfo<T> jsonTypeInfo, CiMode? ciMode = null)
+    public static void WriteJsonPanelTrimSafe<T>(this IAnsiConsole console, string title, T payload, JsonTypeInfo<T> jsonTypeInfo, CiMode? ciMode = null)
     {
         ArgumentNullException.ThrowIfNull(console);
         ArgumentNullException.ThrowIfNull(title);
