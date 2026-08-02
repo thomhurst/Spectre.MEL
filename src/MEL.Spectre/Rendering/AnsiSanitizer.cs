@@ -29,7 +29,7 @@ internal static class AnsiSanitizer
     /// With <paramref name="escapeMarkup"/> false, bracket characters pass through untouched for
     /// consumers that allow markup in message templates.
     /// </summary>
-    public static string EscapeAndSanitize(string text, EmbeddedAnsiMode mode, bool escapeMarkup = true)
+    public static string EscapeAndSanitize(string text, EmbeddedAnsiMode mode, bool escapeMarkup = true, bool stripControls = true)
     {
         if (mode == EmbeddedAnsiMode.Passthrough || !ContainsAnsi(text))
         {
@@ -38,7 +38,7 @@ internal static class AnsiSanitizer
 
         var builder = new StringBuilder(text.Length + 16);
         var state = new AnsiMarkupState();
-        AppendSanitized(builder, text, 0, ref state, mode == EmbeddedAnsiMode.Convert, escapeMarkup, stripControls: true);
+        AppendSanitized(builder, text, 0, ref state, mode == EmbeddedAnsiMode.Convert, escapeMarkup, stripControls);
         state.Flush(builder);
         return builder.ToString();
     }

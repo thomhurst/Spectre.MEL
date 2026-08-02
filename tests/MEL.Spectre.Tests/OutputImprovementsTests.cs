@@ -343,6 +343,20 @@ public class OutputImprovementsTests
     }
 
     [Test]
+    public async Task Default_value_pattern_masks_ANSI_and_backspace_obfuscated_secret_in_exception()
+    {
+        var secret = $"ghp_{new string('a', 36)}";
+        var obfuscatedSecret = "\x1b[0m" + secret.Insert(20, "X\b");
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            logger.LogError(new InvalidOperationException($"Request failed with {obfuscatedSecret}"), "operation failed");
+        }, o => o.Template = "{Message}");
+
+        await Assert.That(output).Contains("Request failed with ***");
+        await Assert.That(output).DoesNotContain("ghp_");
+    }
+
+    [Test]
     public async Task Rendered_exception_pattern_masks_ANSI_interleaved_secret()
     {
         var secret = $"ghp_{new string('a', 36)}";

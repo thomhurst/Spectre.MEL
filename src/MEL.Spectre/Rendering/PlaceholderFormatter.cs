@@ -60,7 +60,7 @@ internal static class PlaceholderFormatter
     internal static string NormalizeForMasking(string text, bool normalizeLineEndings = false)
     {
         var normalized = AnsiSanitizer.ContainsAnsi(text)
-            ? AnsiSanitizer.EscapeAndSanitize(text, EmbeddedAnsiMode.Strip, escapeMarkup: false)
+            ? AnsiSanitizer.EscapeAndSanitize(text, EmbeddedAnsiMode.Strip, escapeMarkup: false, stripControls: false)
             : text;
         normalized = NormalizeTerminalControls(normalized);
         return normalizeLineEndings && normalized.Contains('\r')
