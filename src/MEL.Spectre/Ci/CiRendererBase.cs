@@ -191,22 +191,23 @@ internal abstract class CiRendererBase : ICiRenderer
         {
             exceptionText = FormatExceptionForAot(exception, _context.ExceptionFormats);
         }
+        var normalizedExceptionText = PlaceholderFormatter.NormalizeForMasking(exceptionText);
 
-        if (!_context.Masker.ShouldMaskValue(exceptionText)
+        if (!_context.Masker.ShouldMaskValue(normalizedExceptionText)
             && !normalizedMessages.Any(_context.Masker.ShouldMaskValue))
         {
             return null;
         }
 
-        var found = _context.Masker.TryMaskValuePatterns(exceptionText, maskValues, out var maskedException);
+        var found = _context.Masker.TryMaskValuePatterns(normalizedExceptionText, maskValues, out var maskedException);
 
         for (var i = 0; i < exceptions.Length; i++)
         {
             if (_context.Masker.TryMaskValuePatterns(normalizedMessages[i], maskValues, out var maskedMessage))
             {
-                maskedException = exceptions[i].Message.Length == 0
+                maskedException = normalizedMessages[i].Length == 0
                     ? maskedMessage
-                    : maskedException.Replace(exceptions[i].Message, maskedMessage, StringComparison.Ordinal);
+                    : maskedException.Replace(normalizedMessages[i], maskedMessage, StringComparison.Ordinal);
                 found = true;
             }
         }
