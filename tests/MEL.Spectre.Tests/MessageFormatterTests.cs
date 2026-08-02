@@ -174,6 +174,22 @@ public class MessageFormatterTests
     }
 
     [Test]
+    public async Task Passthrough_ansi_masking_preserves_CRLF_index_alignment()
+    {
+        var masker = new SecretMasker([], [@"secret-value"], 256);
+
+        var result = MessageFormatter.Render(
+            null,
+            "prefix\r\n\x1b[31msecret-value",
+            [],
+            SpectreTheme.Monochrome,
+            masker,
+            embeddedAnsi: EmbeddedAnsiMode.Passthrough);
+
+        await Assert.That(result).IsEqualTo("prefix\r\n***");
+    }
+
+    [Test]
     public async Task Escapes_markup_brackets_in_literal()
     {
         var theme = SpectreTheme.Monochrome;

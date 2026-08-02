@@ -159,7 +159,7 @@ internal static class MessageFormatter
             : rendered;
         if (AnsiSanitizer.ContainsAnsi(plainText))
         {
-            plainText = AnsiSanitizer.EscapeAndSanitize(plainText, EmbeddedAnsiMode.Strip, escapeMarkup: false);
+            plainText = StripAnsiForMasking(plainText);
         }
         plainText = DropInvisibleControls(plainText);
 
@@ -381,6 +381,21 @@ internal static class MessageFormatter
                 builder.Append(text[i]);
             }
         }
+        return builder.ToString();
+    }
+
+    private static string StripAnsiForMasking(string text)
+    {
+        var builder = new StringBuilder(text.Length);
+        var ansi = new AnsiMarkupState();
+        AnsiSanitizer.AppendSanitized(
+            builder,
+            text,
+            0,
+            ref ansi,
+            convert: false,
+            escapeMarkup: false,
+            stripControls: false);
         return builder.ToString();
     }
 
