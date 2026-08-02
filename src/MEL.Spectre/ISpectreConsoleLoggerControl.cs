@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+
 namespace MEL.Spectre;
 
 /// <summary>
@@ -5,6 +7,16 @@ namespace MEL.Spectre;
 /// </summary>
 public interface ISpectreConsoleLoggerControl
 {
+    /// <summary>
+    /// Suppresses MEL.Spectre log output in the current asynchronous context until the returned scope is disposed.
+    /// </summary>
+    IDisposable Suspend();
+
+    /// <summary>
+    /// Determines whether the current logging filter configuration enables MEL.Spectre for a category and level.
+    /// </summary>
+    bool WouldRender(string categoryName, LogLevel logLevel);
+
     /// <summary>
     /// Completes after every log entry accepted before this call has been rendered or dropped by the configured
     /// backpressure policy.

@@ -11,20 +11,28 @@ using MEL.Spectre.Templates;
 
 namespace MEL.Spectre.Provider;
 
-[ProviderAlias("SpectreConsole")]
+[ProviderAlias(SpectreConsoleLoggerProvider.Alias)]
 internal sealed class SpectreConsoleLoggerProvider : ILoggerProvider, ISupportExternalScope, IAsyncDisposable
 {
+    internal const string Alias = "SpectreConsole";
+
     private readonly ConcurrentDictionary<string, SpectreConsoleLogger> _loggers = new(StringComparer.Ordinal);
     private readonly ILogEntryWriter _writer;
     private readonly SpectreConsoleLoggerOptions _options;
+    private readonly SpectreConsoleLoggerSuspension _suspension;
     private volatile IExternalScopeProvider? _scopeProvider;
     private int _disposed;
 
-    public SpectreConsoleLoggerProvider(IOptions<SpectreConsoleLoggerOptions> options, IAnsiConsole console)
+    public SpectreConsoleLoggerProvider(
+        IOptions<SpectreConsoleLoggerOptions> options,
+        IAnsiConsole console,
+        SpectreConsoleLoggerSuspension suspension)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(console);
+        ArgumentNullException.ThrowIfNull(suspension);
         _options = options.Value;
+        _suspension = suspension;
         ArgumentNullException.ThrowIfNull(_options.Theme, $"{nameof(SpectreConsoleLoggerOptions)}.{nameof(SpectreConsoleLoggerOptions.Theme)}");
 
         var ciMode = _options.CiMode == CiMode.Auto ? CiDetector.DetectFromEnvironment() : _options.CiMode;
@@ -61,6 +69,7 @@ internal sealed class SpectreConsoleLoggerProvider : ILoggerProvider, ISupportEx
                 name,
                 _writer,
                 () => _scopeProvider,
+                _suspension,
                 _options.IncludeScopes,
                 _options.IncludeActivity));
     }

@@ -33,6 +33,7 @@ public static class SpectreConsoleLoggingBuilderExtensions
 
         builder.Services.TryAddSingleton<IAnsiConsole>(sp =>
             AnsiConsoleFactory.Build(sp.GetRequiredService<IOptions<SpectreConsoleLoggerOptions>>().Value));
+        builder.Services.TryAddSingleton<SpectreConsoleLoggerSuspension>();
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<ILoggerProvider, SpectreConsoleLoggerProvider>());
         builder.Services.TryAddSingleton<ISpectreConsoleLoggerControl, SpectreConsoleLoggerControl>();
 
