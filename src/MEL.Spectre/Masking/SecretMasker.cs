@@ -50,69 +50,14 @@ internal sealed class SecretMasker
 
     public bool TryMaskValuePatterns(string value, List<string> maskValueSink, out string maskedValue)
     {
-        maskedValue = value;
-        var ranges = new List<MaskRange>();
-        var sinkStart = maskValueSink.Count;
-
-        for (var patternIndex = 0; patternIndex < _valuePatterns.Length; patternIndex++)
-        {
-            foreach (Match match in _valuePatterns[patternIndex].Matches(value))
-            {
-                if (match.Length == 0)
-                {
-                    maskValueSink.RemoveRange(sinkStart, maskValueSink.Count - sinkStart);
-                    if (value.Length > 0)
-                    {
-                        maskValueSink.Add(value);
-                    }
-                    maskedValue = MaskedToken;
-                    return true;
-                }
-
-                ranges.Add(new MaskRange(match.Index, match.Index + match.Length));
-                maskValueSink.Add(match.Value);
-            }
-        }
-
+        var ranges = GetValuePatternMaskRanges(value, maskValueSink);
         if (ranges.Count == 0)
         {
+            maskedValue = value;
             return false;
         }
 
-        ranges.Sort(static (left, right) =>
-        {
-            var byStart = left.Start.CompareTo(right.Start);
-            return byStart != 0 ? byStart : right.End.CompareTo(left.End);
-        });
-
-        var mergedRanges = new List<MaskRange>(ranges.Count);
-        for (var i = 0; i < ranges.Count; i++)
-        {
-            var range = ranges[i];
-            if (mergedRanges.Count > 0 && range.Start <= mergedRanges[^1].End)
-            {
-                var previous = mergedRanges[^1];
-                if (range.End > previous.End)
-                {
-                    mergedRanges[^1] = previous with { End = range.End };
-                }
-                continue;
-            }
-
-            mergedRanges.Add(range);
-        }
-
-        var builder = new StringBuilder(value.Length);
-        var position = 0;
-        for (var i = 0; i < mergedRanges.Count; i++)
-        {
-            var range = mergedRanges[i];
-            builder.Append(value, position, range.Start - position);
-            builder.Append(MaskedToken);
-            position = range.End;
-        }
-        builder.Append(value, position, value.Length - position);
-        maskedValue = builder.ToString();
+        maskedValue = ApplyMaskRanges(value, ranges);
         return true;
     }
 
@@ -124,6 +69,11 @@ internal sealed class SecretMasker
             return value;
         }
 
+        return ApplyMaskRanges(value, ranges);
+    }
+
+    private static string ApplyMaskRanges(string value, List<MaskRange> ranges)
+    {
         var builder = new StringBuilder(value.Length);
         var copiedLength = 0;
         for (var i = 0; i < ranges.Count; i++)
@@ -151,6 +101,7 @@ internal sealed class SecretMasker
                     {
                         return MaskWholeValue(value, ranges, matchedValues, matchedValueStart);
                     }
+
                     ranges.Add(new MaskRange(match.Index, match.Index + match.Length));
                     matchedValues?.Add(match.Value);
                 }
@@ -210,6 +161,7 @@ internal sealed class SecretMasker
                 matchedValues.Add(value);
             }
         }
+
         return ranges;
     }
 
