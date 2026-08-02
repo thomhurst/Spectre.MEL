@@ -100,6 +100,16 @@ public class MessageFormatterTests
     }
 
     [Test]
+    public async Task Value_pattern_scanning_aligns_after_dropped_controls()
+    {
+        var masker = new SecretMasker([], [@"secret-\w+"], 256);
+
+        var result = MessageFormatter.Render(null, "prefix\0\fsecret-value", [], SpectreTheme.Monochrome, masker);
+
+        await Assert.That(result).IsEqualTo("prefix***");
+    }
+
+    [Test]
     public async Task Default_value_patterns_mask_entire_private_key_block()
     {
         const string privateKey = "-----BEGIN PRIVATE KEY-----\nYWJjZGVmZ2hpamtsbW5vcA==\n-----END PRIVATE KEY-----";

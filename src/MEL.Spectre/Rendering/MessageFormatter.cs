@@ -161,6 +161,7 @@ internal static class MessageFormatter
         {
             plainText = AnsiSanitizer.EscapeAndSanitize(plainText, EmbeddedAnsiMode.Strip, escapeMarkup: false);
         }
+        plainText = DropInvisibleControls(plainText);
 
         var ranges = masker.GetValuePatternMaskRanges(plainText, collectMaskValues);
         if (ranges.Count == 0)
@@ -311,6 +312,35 @@ internal static class MessageFormatter
 
     private static bool IsDroppedControl(char value) =>
         char.IsControl(value) && value != '\r' && value != '\n' && value != '\t';
+
+    private static string DropInvisibleControls(string text)
+    {
+        var firstControl = -1;
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (IsDroppedControl(text[i]))
+            {
+                firstControl = i;
+                break;
+            }
+        }
+
+        if (firstControl < 0)
+        {
+            return text;
+        }
+
+        var builder = new StringBuilder(text.Length);
+        builder.Append(text, 0, firstControl);
+        for (var i = firstControl + 1; i < text.Length; i++)
+        {
+            if (!IsDroppedControl(text[i]))
+            {
+                builder.Append(text[i]);
+            }
+        }
+        return builder.ToString();
+    }
 
     private static void ConsumeRenderedAnsiSequence(string text, ref int index, ref AnsiMarkupState ansi)
     {
