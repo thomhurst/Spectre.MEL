@@ -59,7 +59,7 @@ public class MessageFormatterTests
         var masker = NewMasker();
         var capture = new CapturingLogger();
         capture.LogInformation("use {{0}} and }} braces with {Value}", 42);
-        var (originalFormat, placeholders) = StateReader.Extract(capture.State);
+        var (originalFormat, placeholders, _) = StateReader.Extract(capture.State);
 
         var result = MessageFormatter.Render(originalFormat, capture.Message!, placeholders, theme, masker);
 

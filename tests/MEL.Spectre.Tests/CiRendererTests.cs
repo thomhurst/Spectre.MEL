@@ -405,6 +405,7 @@ public class CiRendererTests
     }
 
     [Test]
+    [NotInParallel("stderr-capture")]
     public async Task AllowMarkupInMessageTemplate_invalid_markup_falls_back_to_plain_text()
     {
         var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
@@ -420,6 +421,7 @@ public class CiRendererTests
     }
 
     [Test]
+    [NotInParallel("stderr-capture")]
     public async Task GitHubActions_invalid_markup_annotation_falls_back_to_plain_text()
     {
         var output = await LogTestHarness.CaptureAsync(CiMode.GitHubActions, logger =>

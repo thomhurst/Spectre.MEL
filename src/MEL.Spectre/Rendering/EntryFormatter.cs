@@ -168,7 +168,7 @@ internal sealed class EntryFormatter
 
     public string FormatMessage(LogEntry entry, List<string>? maskValueSink = null, bool escapeMessageMarkup = false)
     {
-        var allowMessageMarkup = _allowMarkupInTemplate && !escapeMessageMarkup;
+        var allowMessageMarkup = (_allowMarkupInTemplate || entry.AllowMarkup) && !escapeMessageMarkup;
         return string.Concat(
             _messageOpenTag,
             MessageFormatter.Render(entry.OriginalFormat, entry.Message, entry.Placeholders, _theme, _masker, maskValueSink, allowMessageMarkup, _embeddedAnsi),
