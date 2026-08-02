@@ -1,5 +1,7 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Spectre.Console.Testing;
 using MEL.Spectre;
 using TUnit.Assertions;
@@ -9,6 +11,57 @@ namespace MEL.Spectre.Tests;
 
 public class IntegrationTests
 {
+    [Test]
+    public async Task Binds_provider_options_from_logging_configuration()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Logging:SpectreConsole:Template"] = "configured {Message}",
+                ["Logging:SpectreConsole:CiMode"] = nameof(CiMode.GitLabCi),
+                ["Logging:SpectreConsole:WriteMode"] = nameof(WriteMode.Synchronous),
+                ["Logging:SpectreConsole:IncludeScopes"] = "false",
+            })
+            .Build();
+
+        await using var services = new ServiceCollection()
+            .AddLogging(builder =>
+            {
+                builder.AddConfiguration(configuration.GetSection("Logging"));
+                builder.AddSpectreConsole();
+            })
+            .BuildServiceProvider();
+
+        var options = services.GetRequiredService<IOptions<SpectreConsoleLoggerOptions>>().Value;
+        await Assert.That(options.Template).IsEqualTo("configured {Message}");
+        await Assert.That(options.CiMode).IsEqualTo(CiMode.GitLabCi);
+        await Assert.That(options.WriteMode).IsEqualTo(WriteMode.Synchronous);
+        await Assert.That(options.IncludeScopes).IsFalse();
+    }
+
+    [Test]
+    public async Task Code_configuration_overrides_provider_configuration()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Logging:SpectreConsole:Template"] = "configured {Message}",
+            })
+            .Build();
+
+        await using var services = new ServiceCollection()
+            .AddLogging(builder =>
+            {
+                builder.AddConfiguration(configuration.GetSection("Logging"));
+                builder.AddSpectreConsole(options => options.Template = "code {Message}");
+            })
+            .BuildServiceProvider();
+
+        var options = services.GetRequiredService<IOptions<SpectreConsoleLoggerOptions>>().Value;
+        await Assert.That(options.Template).IsEqualTo("code {Message}");
+    }
+
+
     [Test]
     public async Task End_to_end_logger_produces_expected_text()
     {

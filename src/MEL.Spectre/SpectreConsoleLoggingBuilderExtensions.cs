@@ -1,6 +1,8 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Configuration;
 using Microsoft.Extensions.Logging.Console;
 using Microsoft.Extensions.Options;
 using Spectre.Console;
@@ -10,13 +12,20 @@ namespace MEL.Spectre;
 
 public static class SpectreConsoleLoggingBuilderExtensions
 {
+    private const string RequiresDynamicCodeMessage = "Binding SpectreConsoleLoggerOptions to configuration values may require generating dynamic code at runtime.";
+    private const string TrimmingRequiresUnreferencedCodeMessage = "SpectreConsoleLoggerOptions dependent types may have their members trimmed. Ensure all required members are preserved.";
+
+    [RequiresDynamicCode(RequiresDynamicCodeMessage)]
+    [RequiresUnreferencedCode(TrimmingRequiresUnreferencedCodeMessage)]
     public static ILoggingBuilder AddSpectreConsole(this ILoggingBuilder builder, Action<SpectreConsoleLoggerOptions>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(builder);
 
+        builder.AddConfiguration();
         builder.Services
             .AddOptions<SpectreConsoleLoggerOptions>()
             .ValidateOnStart();
+        LoggerProviderOptions.RegisterProviderOptions<SpectreConsoleLoggerOptions, SpectreConsoleLoggerProvider>(builder.Services);
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<SpectreConsoleLoggerOptions>, SpectreConsoleLoggerOptionsValidator>());
         if (configure is not null)
         {
