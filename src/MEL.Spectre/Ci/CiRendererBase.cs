@@ -68,7 +68,9 @@ internal abstract class CiRendererBase : ICiRenderer
         var indent = BuildIndent(scopeDepth);
         if (prefix is not null)
         {
-            var plainLine = Markup.Remove(indent is null ? markup : indent + markup);
+            var annotatedMarkup = indent is null ? markup : indent + markup;
+            ValidateMarkup(annotatedMarkup);
+            var plainLine = Markup.Remove(annotatedMarkup);
             WriteCommand(console, prefix + EscapeLevelAnnotationPayload(plainLine));
         }
         else
@@ -135,4 +137,6 @@ internal abstract class CiRendererBase : ICiRenderer
             AppendExceptionWithoutStack(builder, exception.InnerException);
         }
     }
+
+    private static void ValidateMarkup(string markup) => _ = new Markup(markup);
 }

@@ -424,14 +424,16 @@ public class CiRendererTests
     {
         var output = await LogTestHarness.CaptureAsync(CiMode.GitHubActions, logger =>
         {
-            logger.LogWarning("Restoring [my.csproj]");
+            logger.LogWarning("Restoring [my.csproj] with {Authorization}", "Bearer xyz");
         }, o =>
         {
             o.AllowMarkupInMessageTemplate = true;
             o.Template = "{Message}";
         });
 
-        await Assert.That(output).Contains("::warning::Restoring [my.csproj]");
+        await Assert.That(output).Contains("::warning::Restoring [my.csproj] with ***");
+        await Assert.That(CountSubstring(output, "::warning::")).IsEqualTo(1);
+        await Assert.That(CountSubstring(output, "::add-mask::Bearer xyz")).IsEqualTo(1);
     }
 
     [Test]
