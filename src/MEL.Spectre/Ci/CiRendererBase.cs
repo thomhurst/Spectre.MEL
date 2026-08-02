@@ -170,12 +170,6 @@ internal abstract class CiRendererBase : ICiRenderer
         }
 
         var exceptions = EnumerateExceptions(exception).ToArray();
-        if (!_context.Masker.ShouldMaskValue(exception.ToString())
-            && !exceptions.Any(current => _context.Masker.ShouldMaskValue(current.Message)))
-        {
-            return null;
-        }
-
         var renderOptions = RenderOptions.Create(console) with
         {
             ConsoleSize = new Size(ExceptionMaskingRenderWidth, console.Profile.Height),
@@ -187,6 +181,12 @@ internal abstract class CiRendererBase : ICiRenderer
         }
 
         var exceptionText = builder.ToString();
+        if (!_context.Masker.ShouldMaskValue(exceptionText)
+            && !exceptions.Any(current => _context.Masker.ShouldMaskValue(current.Message)))
+        {
+            return null;
+        }
+
         var found = _context.Masker.TryMaskValuePatterns(exceptionText, maskValues, out var maskedException);
 
         foreach (var current in exceptions)

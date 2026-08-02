@@ -315,6 +315,24 @@ public class OutputImprovementsTests
     }
 
     [Test]
+    public async Task Rendered_exception_pattern_respects_ShortenTypes_format()
+    {
+        const string Secret = "ghp_rendered123";
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            logger.LogError(new InvalidOperationException($"Request failed with {Secret}"), "operation failed");
+        }, o =>
+        {
+            o.MaskedValuePatterns.Clear();
+            o.MaskedValuePatterns.Add(@"^InvalidOperationException: .*ghp_\w+");
+            o.Template = "{Message}";
+        });
+
+        await Assert.That(output).Contains("***");
+        await Assert.That(output).DoesNotContain(Secret);
+    }
+
+    [Test]
     public async Task Masked_exception_value_emits_add_mask_in_github_actions()
     {
         const string Secret = "ghp_abcd1234";
