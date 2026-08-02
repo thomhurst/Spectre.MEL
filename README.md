@@ -54,6 +54,25 @@ logger.LogInformation("User {UserId} logged in", 42);
 `AddSpectreConsole` removes the registered `ConsoleLoggerProvider` so you do
 not get duplicate output.
 
+Scalar options can also be loaded from the provider's standard logging
+configuration section:
+
+```json
+{
+  "Logging": {
+    "SpectreConsole": {
+      "Template": "[{Timestamp:HH:mm:ss} {Level:u5}] {Message}",
+      "CiMode": "Auto",
+      "WriteMode": "Background",
+      "IncludeScopes": true
+    }
+  }
+}
+```
+
+An `AddSpectreConsole(options => ...)` callback is applied after configuration
+binding and therefore overrides configured values.
+
 ## Themes
 
 ```csharp
