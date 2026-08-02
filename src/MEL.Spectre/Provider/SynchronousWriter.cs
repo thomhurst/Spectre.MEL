@@ -27,7 +27,11 @@ internal sealed class SynchronousWriter : ILogEntryWriter
     public void Enqueue(LogEntry entry)
     {
         var sequence = _completionTracker.Begin();
-        _renderGate.Enter();
+        var ownsSynchronizationLock = Monitor.IsEntered(SynchronizationLock);
+        if (!ownsSynchronizationLock)
+        {
+            _renderGate.Enter();
+        }
         try
         {
             lock (SynchronizationLock)
@@ -46,7 +50,10 @@ internal sealed class SynchronousWriter : ILogEntryWriter
         }
         finally
         {
-            _renderGate.Exit();
+            if (!ownsSynchronizationLock)
+            {
+                _renderGate.Exit();
+            }
             _completionTracker.Complete(sequence);
         }
     }

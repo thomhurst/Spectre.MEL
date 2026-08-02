@@ -124,6 +124,27 @@ public class WriteModeTests
     }
 
     [Test]
+    public async Task Synchronous_mode_allows_logging_inside_documented_render_gate_pattern()
+    {
+        var console = new TestConsole { Profile = { Width = 1_000_000 } };
+        await using var services = BuildServices(console, WriteMode.Synchronous);
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("LeaseReentry");
+        var control = services.GetRequiredService<ISpectreConsoleLoggerControl>();
+
+        await Task.Run(async () =>
+        {
+            using var gate = await control.TryAcquireRenderGateAsync(TimeSpan.FromSeconds(1))
+                ?? throw new TimeoutException("Render gate was not acquired.");
+            lock (control.SynchronizationLock)
+            {
+                logger.LogInformation("inside lease");
+            }
+        }).WaitAsync(TimeSpan.FromSeconds(5));
+
+        await Assert.That(console.Output).Contains("inside lease");
+    }
+
+    [Test]
     public async Task Synchronous_disposal_times_out_while_render_gate_is_held()
     {
         var console = new TestConsole { Profile = { Width = 1_000_000 } };
