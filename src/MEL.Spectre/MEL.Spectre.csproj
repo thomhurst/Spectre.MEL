@@ -3,6 +3,7 @@
     <RootNamespace>MEL.Spectre</RootNamespace>
     <AssemblyName>MEL.Spectre</AssemblyName>
     <IsPackable>true</IsPackable>
+    <IsAotCompatible>true</IsAotCompatible>
     <PackageId>MEL.Spectre</PackageId>
     <Description>Microsoft.Extensions.Logging provider that renders log entries via Spectre.Console with first-class CI runner awareness (GitHub Actions, Azure Pipelines, GitLab CI, Jenkins, TeamCity, CircleCI, Buildkite, AppVeyor, Travis).</Description>
     <PackageTags>logging;spectre;console;ansi;ci;github-actions;azure-pipelines;gitlab</PackageTags>

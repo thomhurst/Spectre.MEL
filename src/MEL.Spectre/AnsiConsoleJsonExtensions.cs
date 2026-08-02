@@ -1,4 +1,6 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using Spectre.Console;
 using MEL.Spectre.Ci;
 
@@ -19,11 +21,35 @@ public static class AnsiConsoleJsonExtensions
     /// Pipelines, GitLab CI), the panel is also wrapped in a collapsible group so it doesn't dominate
     /// the log scroll.
     /// </summary>
+    [RequiresUnreferencedCode("JSON serialization may require types that cannot be statically analyzed. Use WriteJsonPanelTrimSafe with JsonTypeInfo<T> for trim-safe serialization.")]
+    [RequiresDynamicCode("JSON serialization may require runtime code generation. Use WriteJsonPanelTrimSafe with JsonTypeInfo<T> for NativeAOT-safe serialization.")]
     public static void WriteJsonPanel(this IAnsiConsole console, string title, object? payload, CiMode? ciMode = null)
     {
         ArgumentNullException.ThrowIfNull(console);
         ArgumentNullException.ThrowIfNull(title);
 
+        var json = payload is null
+            ? "null"
+            : JsonSerializer.Serialize(payload, IndentedJson);
+        WriteJsonPanelCore(console, title, json, ciMode);
+    }
+
+    /// <summary>
+    /// Writes <paramref name="payload"/> as JSON using source-generated metadata inside a
+    /// Spectre.Console panel with the given <paramref name="title"/>.
+    /// </summary>
+    public static void WriteJsonPanelTrimSafe<T>(this IAnsiConsole console, string title, T payload, JsonTypeInfo<T> jsonTypeInfo, CiMode? ciMode = null)
+    {
+        ArgumentNullException.ThrowIfNull(console);
+        ArgumentNullException.ThrowIfNull(title);
+        ArgumentNullException.ThrowIfNull(jsonTypeInfo);
+
+        var json = JsonSerializer.Serialize(payload, jsonTypeInfo);
+        WriteJsonPanelCore(console, title, json, ciMode);
+    }
+
+    private static void WriteJsonPanelCore(IAnsiConsole console, string title, string json, CiMode? ciMode)
+    {
         var resolvedMode = ciMode ?? CiDetector.DetectFromEnvironment();
         var groupOpen = ResolveGroupOpen(resolvedMode, title);
         var groupClose = ResolveGroupClose(resolvedMode, title);
@@ -32,10 +58,6 @@ public static class AnsiConsoleJsonExtensions
         {
             console.WriteLine(groupOpen);
         }
-
-        var json = payload is null
-            ? "null"
-            : JsonSerializer.Serialize(payload, IndentedJson);
 
         var panel = new Panel(new Markup(Markup.Escape(json)))
         {

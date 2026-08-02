@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using MEL.Spectre.Ci;
+using Spectre.Console;
 using TUnit.Assertions;
 using TUnit.Assertions.Extensions;
 
@@ -8,6 +9,57 @@ namespace MEL.Spectre.Tests;
 public class CiRendererTests
 {
     private const string AddMaskPrefix = "::add-mask::";
+
+    [Test]
+    public async Task Aot_exception_fallback_honors_NoStackTrace()
+    {
+        Exception exception;
+        try
+        {
+            throw new InvalidOperationException("private failure");
+        }
+        catch (Exception ex)
+        {
+            exception = ex;
+        }
+
+        var text = CiRendererBase.FormatExceptionForAot(exception, ExceptionFormats.NoStackTrace);
+        var textWithStack = CiRendererBase.FormatExceptionForAot(exception, ExceptionFormats.Default);
+
+        await Assert.That(text).Contains("InvalidOperationException: private failure");
+        await Assert.That(text).DoesNotContain(" at ");
+        await Assert.That(text).DoesNotContain(nameof(Aot_exception_fallback_honors_NoStackTrace));
+        await Assert.That(textWithStack).Contains(nameof(Aot_exception_fallback_honors_NoStackTrace));
+    }
+
+    [Test]
+    public async Task Aot_exception_fallback_preserves_inner_exception_without_stacks()
+    {
+        var inner = new ArgumentException("root cause");
+        var exception = new InvalidOperationException("wrapper", inner);
+
+        var text = CiRendererBase.FormatExceptionForAot(exception, ExceptionFormats.NoStackTrace);
+
+        await Assert.That(text).Contains("InvalidOperationException: wrapper");
+        await Assert.That(text).Contains("ArgumentException: root cause");
+        await Assert.That(text).DoesNotContain(" at ");
+    }
+
+    [Test]
+    public async Task Aot_exception_fallback_preserves_all_aggregate_branches()
+    {
+        var exception = new AggregateException(
+            "parallel failures",
+            new InvalidOperationException("first"),
+            new ArgumentException("second", new FormatException("nested")));
+
+        var text = CiRendererBase.FormatExceptionForAot(exception, ExceptionFormats.NoStackTrace);
+
+        await Assert.That(text).Contains("InvalidOperationException: first");
+        await Assert.That(text).Contains("ArgumentException: second");
+        await Assert.That(text).Contains("FormatException: nested");
+        await Assert.That(text).DoesNotContain(" at ");
+    }
 
     [Test]
     public async Task AzurePipelines_emits_group_endgroup_markers()

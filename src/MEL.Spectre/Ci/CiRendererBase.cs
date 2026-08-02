@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+using System.Text;
 using Microsoft.Extensions.Logging;
 using Spectre.Console;
 using MEL.Spectre.Masking;
@@ -71,7 +73,14 @@ internal abstract class CiRendererBase : ICiRenderer
 
         if (entry.Exception is not null)
         {
-            console.WriteException(entry.Exception, _context.ExceptionFormats);
+            if (RuntimeFeature.IsDynamicCodeSupported)
+            {
+                console.WriteException(entry.Exception, _context.ExceptionFormats);
+            }
+            else
+            {
+                console.MarkupLine(Markup.Escape(FormatExceptionForAot(entry.Exception, _context.ExceptionFormats)));
+            }
         }
     }
 
@@ -85,4 +94,40 @@ internal abstract class CiRendererBase : ICiRenderer
 
     protected static void WriteCommand(IAnsiConsole console, string command) =>
         console.Profile.Out.Writer.WriteLine(command);
+
+    internal static string FormatExceptionForAot(Exception exception, ExceptionFormats formats)
+    {
+        if ((formats & ExceptionFormats.NoStackTrace) == 0)
+        {
+            return exception.ToString();
+        }
+
+        var builder = new StringBuilder();
+        AppendExceptionWithoutStack(builder, exception);
+        return builder.ToString();
+    }
+
+    private static void AppendExceptionWithoutStack(StringBuilder builder, Exception exception)
+    {
+        if (builder.Length > 0)
+        {
+            builder.AppendLine();
+            builder.Append(" ---> ");
+        }
+
+        var typeName = exception.GetType().FullName ?? exception.GetType().Name;
+        builder.Append(typeName).Append(": ").Append(exception.Message);
+
+        if (exception is AggregateException aggregate)
+        {
+            foreach (var innerException in aggregate.InnerExceptions)
+            {
+                AppendExceptionWithoutStack(builder, innerException);
+            }
+        }
+        else if (exception.InnerException is not null)
+        {
+            AppendExceptionWithoutStack(builder, exception.InnerException);
+        }
+    }
 }
