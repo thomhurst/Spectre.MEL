@@ -154,9 +154,19 @@ internal static class MessageFormatter
 
     private static string MaskMessageText(string rendered, SecretMasker masker, List<string>? collectMaskValues)
     {
-        var plainText = rendered.IndexOfAny('[', ']') >= 0
-            ? Markup.Remove(rendered)
-            : rendered;
+        string plainText;
+        try
+        {
+            plainText = rendered.IndexOfAny('[', ']') >= 0
+                ? Markup.Remove(rendered)
+                : rendered;
+        }
+        catch (InvalidOperationException)
+        {
+            // Raw message markup is validated by the renderer before any output. Leave malformed
+            // markup unchanged so that validation can select the escaped fallback path.
+            return rendered;
+        }
         if (AnsiSanitizer.ContainsAnsi(plainText))
         {
             plainText = StripAnsiForMasking(plainText);
