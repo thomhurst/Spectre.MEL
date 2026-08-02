@@ -6,10 +6,38 @@ namespace MEL.Spectre.Provider;
 internal sealed class RenderGate
 {
     private readonly SemaphoreSlim _semaphore = new(1, 1);
+    private int _ownerThreadId;
+    private int _recursionCount;
 
-    public void Enter() => _semaphore.Wait();
+    public void Enter()
+    {
+        var threadId = Environment.CurrentManagedThreadId;
+        if (Volatile.Read(ref _ownerThreadId) == threadId)
+        {
+            _recursionCount++;
+            return;
+        }
 
-    public void Exit() => _semaphore.Release();
+        _semaphore.Wait();
+        _recursionCount = 1;
+        Volatile.Write(ref _ownerThreadId, threadId);
+    }
+
+    public void Exit()
+    {
+        if (Volatile.Read(ref _ownerThreadId) != Environment.CurrentManagedThreadId)
+        {
+            throw new SynchronizationLockException("The render gate can only be exited by its owning thread.");
+        }
+
+        if (--_recursionCount > 0)
+        {
+            return;
+        }
+
+        Volatile.Write(ref _ownerThreadId, 0);
+        _semaphore.Release();
+    }
 
     public bool TryAcquire(TimeSpan timeout, out IDisposable? gate)
     {

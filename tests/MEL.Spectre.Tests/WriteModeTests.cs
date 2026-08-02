@@ -109,6 +109,21 @@ public class WriteModeTests
     }
 
     [Test]
+    public async Task Synchronous_mode_allows_logging_reentry_during_placeholder_rendering()
+    {
+        var console = new TestConsole { Profile = { Width = 1_000_000 } };
+        await using var services = BuildServices(console, WriteMode.Synchronous);
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("Reentrant");
+        var value = new LoggingValue(logger);
+
+        await Task.Run(() => logger.LogInformation("outer {Value}", value))
+            .WaitAsync(TimeSpan.FromSeconds(5));
+
+        await Assert.That(console.Output).Contains("outer value");
+        await Assert.That(console.Output).Contains("nested");
+    }
+
+    [Test]
     public async Task Synchronous_disposal_times_out_while_render_gate_is_held()
     {
         var console = new TestConsole { Profile = { Width = 1_000_000 } };
@@ -337,4 +352,13 @@ public class WriteModeTests
                 configure?.Invoke(options);
             }))
             .BuildServiceProvider();
+
+    private sealed class LoggingValue(ILogger logger)
+    {
+        public override string ToString()
+        {
+            logger.LogInformation("nested");
+            return "value";
+        }
+    }
 }
