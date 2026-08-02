@@ -204,12 +204,15 @@ internal static class MessageFormatter
                 var targetStart = i + 6;
                 var targetEnd = tagEnd - 1;
                 var target = rendered[targetStart..targetEnd];
-                var maskedTarget = masker.MaskValuePatterns(target, collectMaskValues);
-                if (!string.Equals(target, maskedTarget, StringComparison.Ordinal))
+                var logicalTarget = target.IndexOfAny('[', ']') >= 0
+                    ? Markup.Remove(target)
+                    : target;
+                var maskedTarget = masker.MaskValuePatterns(logicalTarget, collectMaskValues);
+                if (!string.Equals(logicalTarget, maskedTarget, StringComparison.Ordinal))
                 {
                     builder ??= new StringBuilder(rendered.Length);
                     builder.Append(rendered, copiedLength, targetStart - copiedLength);
-                    builder.Append(maskedTarget);
+                    builder.Append(Markup.Escape(maskedTarget));
                     copiedLength = targetEnd;
                 }
             }
@@ -444,19 +447,19 @@ internal static class MessageFormatter
 
                 if (wasActive && isActive && (ansi.LastSequenceReset || ansi.LastSequenceChangedStyle))
                 {
-                    var priorIntersects = IntersectsMask(activeStart, visibleIndex, ranges);
-                    RewriteAnsiSpan(activeSequences, priorIntersects, activeResetReplacement, rewritten);
-                    if (priorIntersects && !ansi.LastSequenceReset && activeRestoreSequence is not null)
+                    var priorIsMasked = IsAnsiSpanFullyMasked(activeStart, visibleIndex, ranges);
+                    RewriteAnsiSpan(activeSequences, priorIsMasked, activeResetReplacement, rewritten);
+                    if (priorIsMasked && !ansi.LastSequenceReset && activeRestoreSequence is not null)
                     {
                         rewritten[sequenceStart] = activeRestoreSequence;
                     }
 
                     activeStart = visibleIndex;
                     activeSequences = [sequenceStart];
-                    activeResetReplacement = priorIntersects ? null : GetResetSequence(rendered, sequenceStart);
+                    activeResetReplacement = priorIsMasked ? null : GetResetSequence(rendered, sequenceStart);
                     activeRestoreSequence = ansi.LastSequenceReset
                         ? null
-                        : priorIntersects
+                        : priorIsMasked
                             ? activeRestoreSequence
                             : string.IsNullOrEmpty(replayBefore) ? null : replayBefore;
                 }
@@ -473,7 +476,7 @@ internal static class MessageFormatter
                     activeSequences.Add(sequenceStart);
                     if (!isActive)
                     {
-                        RewriteAnsiSpan(activeSequences, IntersectsMask(activeStart, visibleIndex, ranges), activeResetReplacement, rewritten);
+                        RewriteAnsiSpan(activeSequences, IsAnsiSpanFullyMasked(activeStart, visibleIndex, ranges), activeResetReplacement, rewritten);
                         activeSequences = null;
                         activeResetReplacement = null;
                         activeRestoreSequence = null;
@@ -502,7 +505,7 @@ internal static class MessageFormatter
 
         if (activeSequences is not null)
         {
-            RewriteAnsiSpan(activeSequences, IntersectsMask(activeStart, visibleIndex, ranges), activeResetReplacement, rewritten);
+            RewriteAnsiSpan(activeSequences, IsAnsiSpanFullyMasked(activeStart, visibleIndex, ranges), activeResetReplacement, rewritten);
         }
 
         return rewritten;
@@ -565,9 +568,9 @@ internal static class MessageFormatter
         return true;
     }
 
-    private static void RewriteAnsiSpan(List<int>? sequences, bool intersectsMask, string? resetReplacement, Dictionary<int, string> rewritten)
+    private static void RewriteAnsiSpan(List<int>? sequences, bool isFullyMasked, string? resetReplacement, Dictionary<int, string> rewritten)
     {
-        if (!intersectsMask || sequences is null)
+        if (!isFullyMasked || sequences is null)
         {
             return;
         }
@@ -597,14 +600,23 @@ internal static class MessageFormatter
             return false;
         }
 
-        var closingBracket = text.IndexOf(']', start + 1);
-        if (closingBracket < 0)
+        for (var i = start + 1; i < text.Length; i++)
         {
-            return false;
+            if (text[i] != ']')
+            {
+                continue;
+            }
+            if (i + 1 < text.Length && text[i + 1] == ']')
+            {
+                i++;
+                continue;
+            }
+
+            end = i + 1;
+            return true;
         }
 
-        end = closingBracket + 1;
-        return true;
+        return false;
     }
 
     private static bool IsDroppedControl(char value) =>
@@ -713,17 +725,10 @@ internal static class MessageFormatter
         return false;
     }
 
-    private static bool IntersectsMask(int start, int end, List<SecretMasker.MaskRange> ranges)
-    {
-        for (var i = 0; i < ranges.Count && ranges[i].Start < end; i++)
-        {
-            if (ranges[i].End > start)
-            {
-                return true;
-            }
-        }
-        return start == end && IsInsideOrAtRangeBoundary(start, ranges);
-    }
+    private static bool IsAnsiSpanFullyMasked(int start, int end, List<SecretMasker.MaskRange> ranges) =>
+        start == end
+            ? IsInsideOrAtRangeBoundary(start, ranges)
+            : IsFullyCovered(start, end, ranges);
 
     private static Placeholder FindPlaceholder(Placeholder[] placeholders, string name, ref int positionalIndex)
     {
