@@ -53,6 +53,9 @@ internal abstract class CiRendererBase : ICiRenderer
         var markup = suppressLevel
             ? _context.Formatter.FormatMessage(entry, maskValues, escapeMessageMarkup)
             : _context.Formatter.Format(entry, maskValues, escapeMessageMarkup);
+        var indent = BuildIndent(scopeDepth);
+        var renderedMarkup = indent is null ? markup : indent + markup;
+        ValidateMarkup(renderedMarkup);
 
         if (Capabilities.SupportsMasking)
         {
@@ -65,17 +68,14 @@ internal abstract class CiRendererBase : ICiRenderer
             }
         }
 
-        var indent = BuildIndent(scopeDepth);
         if (prefix is not null)
         {
-            var annotatedMarkup = indent is null ? markup : indent + markup;
-            ValidateMarkup(annotatedMarkup);
-            var plainLine = Markup.Remove(annotatedMarkup);
+            var plainLine = Markup.Remove(renderedMarkup);
             WriteCommand(console, prefix + EscapeLevelAnnotationPayload(plainLine));
         }
         else
         {
-            console.MarkupLine(indent is null ? markup : indent + markup);
+            console.MarkupLine(renderedMarkup);
         }
 
         if (entry.Exception is not null)
@@ -138,5 +138,15 @@ internal abstract class CiRendererBase : ICiRenderer
         }
     }
 
-    private static void ValidateMarkup(string markup) => _ = new Markup(markup);
+    private static void ValidateMarkup(string markup)
+    {
+        try
+        {
+            _ = new Markup(markup);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new MalformedMarkupException(ex);
+        }
+    }
 }

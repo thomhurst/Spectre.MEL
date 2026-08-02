@@ -27,7 +27,7 @@ internal sealed class LogEntryRenderer
             }
             _renderer.RenderEntry(_console, entry, _activeScopes.Count);
         }
-        catch (Exception ex) when (!FatalExceptions.IsFatal(ex))
+        catch (MalformedMarkupException ex)
         {
             try
             {
@@ -38,6 +38,10 @@ internal sealed class LogEntryRenderer
             {
                 LogWriterDiagnostics.Emit($"MEL.Spectre: render fault: {ex}{Environment.NewLine}MEL.Spectre: fallback render fault: {fallbackEx}");
             }
+        }
+        catch (Exception ex) when (!FatalExceptions.IsFatal(ex))
+        {
+            LogWriterDiagnostics.Emit($"MEL.Spectre: render fault: {ex}");
         }
     }
 
