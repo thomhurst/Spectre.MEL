@@ -8,11 +8,14 @@ namespace MEL.Spectre.Rendering;
 
 internal static class MessageFormatter
 {
-    public static string Render(string? originalFormat, string fallback, Placeholder[] placeholders, SpectreTheme theme, SecretMasker masker, List<string>? collectMaskValues = null, bool allowMarkupInTemplate = false, EmbeddedAnsiMode embeddedAnsi = EmbeddedAnsiMode.Convert)
+    public static string Render(string? originalFormat, string fallback, Placeholder[] placeholders, SpectreTheme theme, SecretMasker masker, List<string>? collectMaskValues = null, bool allowMarkupInTemplate = false, EmbeddedAnsiMode embeddedAnsi = EmbeddedAnsiMode.Convert, bool maskValuePatternsInMessageText = true)
     {
         if (string.IsNullOrEmpty(originalFormat))
         {
-            return AnsiSanitizer.EscapeAndSanitize(fallback, embeddedAnsi, escapeMarkup: !allowMarkupInTemplate);
+            var renderedFallback = AnsiSanitizer.EscapeAndSanitize(fallback, embeddedAnsi, escapeMarkup: !allowMarkupInTemplate);
+            return maskValuePatternsInMessageText && masker.HasValuePatterns
+                ? MaskMessageText(renderedFallback, masker, collectMaskValues)
+                : renderedFallback;
         }
 
         var builder = new StringBuilder(originalFormat.Length + 32);
@@ -143,7 +146,31 @@ internal static class MessageFormatter
         }
 
         ansi.Flush(builder);
-        return builder.ToString();
+        var renderedMessage = builder.ToString();
+        return maskValuePatternsInMessageText && masker.HasValuePatterns
+            ? MaskMessageText(renderedMessage, masker, collectMaskValues)
+            : renderedMessage;
+    }
+
+    private static string MaskMessageText(string rendered, SecretMasker masker, List<string>? collectMaskValues)
+    {
+        var plainText = rendered.IndexOfAny('[', ']') >= 0
+            ? Markup.Remove(rendered)
+            : rendered;
+        if (AnsiSanitizer.ContainsAnsi(plainText))
+        {
+            plainText = AnsiSanitizer.EscapeAndSanitize(plainText, EmbeddedAnsiMode.Strip, escapeMarkup: false);
+        }
+
+        var maskedText = masker.MaskValuePatterns(plainText, collectMaskValues);
+        if (ReferenceEquals(maskedText, plainText))
+        {
+            return rendered;
+        }
+
+        return ReferenceEquals(plainText, rendered)
+            ? maskedText
+            : Markup.Escape(maskedText);
     }
 
     private static Placeholder FindPlaceholder(Placeholder[] placeholders, string name, ref int positionalIndex)

@@ -114,6 +114,39 @@ internal sealed class SecretMasker
         return true;
     }
 
+    public string MaskValuePatterns(string value, List<string>? matchedValues = null)
+    {
+        var masked = value;
+        for (var i = 0; i < _valuePatterns.Length; i++)
+        {
+            masked = MaskMatches(_valuePatterns[i], masked, matchedValues);
+        }
+        return masked;
+    }
+
+    private static string MaskMatches(Regex pattern, string value, List<string>? matchedValues)
+    {
+        StringBuilder? builder = null;
+        var copiedLength = 0;
+
+        foreach (var match in pattern.EnumerateMatches(value))
+        {
+            builder ??= new StringBuilder(value.Length);
+            builder.Append(value.AsSpan(copiedLength, match.Index - copiedLength));
+            builder.Append(MaskedToken);
+            matchedValues?.Add(value.Substring(match.Index, match.Length));
+            copiedLength = match.Index + match.Length;
+        }
+
+        if (builder is null)
+        {
+            return value;
+        }
+
+        builder.Append(value.AsSpan(copiedLength));
+        return builder.ToString();
+    }
+
     private bool MatchNamePatterns(string name)
     {
         for (var i = 0; i < _namePatterns.Length; i++)

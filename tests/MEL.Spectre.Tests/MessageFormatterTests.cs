@@ -44,6 +44,64 @@ public class MessageFormatterTests
     }
 
     [Test]
+    public async Task Masks_value_pattern_in_literal_template_text()
+    {
+        var masker = new SecretMasker([], [@"secret-\w+"], 256);
+        var collected = new List<string>();
+
+        var result = MessageFormatter.Render("Token: secret-value", "fallback", [], SpectreTheme.Monochrome, masker, collected);
+
+        await Assert.That(result).IsEqualTo("Token: ***");
+        await Assert.That(collected).Contains("secret-value");
+    }
+
+    [Test]
+    public async Task Masks_value_pattern_in_fallback_message()
+    {
+        var masker = new SecretMasker([], [@"secret-\w+"], 256);
+        var collected = new List<string>();
+
+        var result = MessageFormatter.Render(null, "Token: secret-value", [], SpectreTheme.Monochrome, masker, collected);
+
+        await Assert.That(result).IsEqualTo("Token: ***");
+        await Assert.That(collected).Contains("secret-value");
+    }
+
+    [Test]
+    public async Task Value_pattern_scanning_ignores_markup_tags()
+    {
+        var masker = new SecretMasker([], [@"green"], 256);
+
+        var result = MessageFormatter.Render("[green]safe[/]", "fallback", [], SpectreTheme.Monochrome, masker, allowMarkupInTemplate: true);
+
+        await Assert.That(result).IsEqualTo("[green]safe[/]");
+    }
+
+    [Test]
+    public async Task Value_pattern_scanning_matches_text_split_by_markup_tags()
+    {
+        var masker = new SecretMasker([], [@"secret-value"], 256);
+        var collected = new List<string>();
+
+        var result = MessageFormatter.Render("secret-[red]value[/]", "fallback", [], SpectreTheme.Monochrome, masker, collected, allowMarkupInTemplate: true);
+
+        await Assert.That(result).IsEqualTo("***");
+        await Assert.That(collected).Contains("secret-value");
+    }
+
+    [Test]
+    public async Task Value_pattern_scanning_cannot_be_bypassed_with_ansi_sequences()
+    {
+        var masker = new SecretMasker([], [@"secret-value"], 256);
+        var collected = new List<string>();
+
+        var result = MessageFormatter.Render("sec\x1b[31mret-value", "fallback", [], SpectreTheme.Monochrome, masker, collected, embeddedAnsi: EmbeddedAnsiMode.Passthrough);
+
+        await Assert.That(result).IsEqualTo("***");
+        await Assert.That(collected).Contains("secret-value");
+    }
+
+    [Test]
     public async Task Escapes_markup_brackets_in_literal()
     {
         var theme = SpectreTheme.Monochrome;

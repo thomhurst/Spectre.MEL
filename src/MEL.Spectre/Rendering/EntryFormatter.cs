@@ -24,16 +24,18 @@ internal sealed class EntryFormatter
     private readonly string _messageOpenTag;
     private readonly string _messageCloseTag;
     private readonly bool _allowMarkupInTemplate;
+    private readonly bool _maskValuePatternsInMessageText;
     private readonly EmbeddedAnsiMode _embeddedAnsi;
 
     public bool AllowsMessageMarkup => _allowMarkupInTemplate;
 
-    public EntryFormatter(OutputTemplate template, SpectreTheme theme, SecretMasker masker, bool allowMarkupInTemplate = false, LogLevel minimumInlineLevel = LogLevel.Trace, EmbeddedAnsiMode embeddedAnsi = EmbeddedAnsiMode.Convert)
+    public EntryFormatter(OutputTemplate template, SpectreTheme theme, SecretMasker masker, bool allowMarkupInTemplate = false, LogLevel minimumInlineLevel = LogLevel.Trace, EmbeddedAnsiMode embeddedAnsi = EmbeddedAnsiMode.Convert, bool maskValuePatternsInMessageText = true)
     {
         _template = template;
         _theme = theme;
         _masker = masker;
         _allowMarkupInTemplate = allowMarkupInTemplate;
+        _maskValuePatternsInMessageText = maskValuePatternsInMessageText;
         _embeddedAnsi = embeddedAnsi;
         _minimumInlineLevel = minimumInlineLevel;
         _timestampStyle = theme.TimestampStyle;
@@ -117,7 +119,7 @@ internal sealed class EntryFormatter
                     break;
                 case SegmentKind.Message:
                     builder.Append(_messageOpenTag);
-                    builder.Append(MessageFormatter.Render(entry.OriginalFormat, entry.Message, entry.Placeholders, _theme, _masker, maskValueSink, allowMessageMarkup, _embeddedAnsi));
+                    builder.Append(MessageFormatter.Render(entry.OriginalFormat, entry.Message, entry.Placeholders, _theme, _masker, maskValueSink, allowMessageMarkup, _embeddedAnsi, _maskValuePatternsInMessageText));
                     builder.Append(_messageCloseTag);
                     break;
                 case SegmentKind.NewLine:
@@ -171,7 +173,7 @@ internal sealed class EntryFormatter
         var allowMessageMarkup = (_allowMarkupInTemplate || entry.AllowMarkup) && !escapeMessageMarkup;
         return string.Concat(
             _messageOpenTag,
-            MessageFormatter.Render(entry.OriginalFormat, entry.Message, entry.Placeholders, _theme, _masker, maskValueSink, allowMessageMarkup, _embeddedAnsi),
+            MessageFormatter.Render(entry.OriginalFormat, entry.Message, entry.Placeholders, _theme, _masker, maskValueSink, allowMessageMarkup, _embeddedAnsi, _maskValuePatternsInMessageText),
             _messageCloseTag);
     }
 

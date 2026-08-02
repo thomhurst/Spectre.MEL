@@ -626,6 +626,43 @@ public class OutputImprovementsTests
     }
 
     [Test]
+    public async Task MaskedValuePatterns_masks_interpolated_message_and_emits_add_mask()
+    {
+        const string secret = "secret-value";
+        var output = await LogTestHarness.CaptureAsync(CiMode.GitHubActions, logger =>
+        {
+            logger.LogInformation($"Token: {secret}");
+        }, o =>
+        {
+            o.MaskedValuePatterns.Clear();
+            o.MaskedValuePatterns.Add(@"secret-\w+");
+            o.Template = "{Message}";
+        });
+
+        await Assert.That(output).Contains("::add-mask::secret-value");
+        await Assert.That(output).Contains("Token: ***");
+        await Assert.That(output).DoesNotContain($"Token: {secret}");
+    }
+
+    [Test]
+    public async Task MaskValuePatternsInMessageText_false_retains_placeholder_only_scanning()
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.GitHubActions, logger =>
+        {
+            logger.LogInformation("Token: secret-value");
+        }, o =>
+        {
+            o.MaskedValuePatterns.Clear();
+            o.MaskedValuePatterns.Add(@"secret-\w+");
+            o.MaskValuePatternsInMessageText = false;
+            o.Template = "{Message}";
+        });
+
+        await Assert.That(output).Contains("Token: secret-value");
+        await Assert.That(output).DoesNotContain("::add-mask::secret-value");
+    }
+
+    [Test]
     public async Task MaskedValuePatterns_does_nothing_for_non_matching_value()
     {
         var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
