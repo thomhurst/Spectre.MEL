@@ -216,11 +216,20 @@ var control = services.GetRequiredService<ISpectreConsoleLoggerControl>();
 var console = services.GetRequiredService<IAnsiConsole>();
 
 await control.FlushAsync(cancellationToken);
-lock (control.SynchronizationLock)
+using (await control.TryAcquireRenderGateAsync(TimeSpan.FromSeconds(1), cancellationToken)
+    ?? throw new TimeoutException("Console render gate unavailable."))
 {
-    console.WriteLine("::endgroup::");
+    lock (control.SynchronizationLock)
+    {
+        console.WriteLine("::endgroup::");
+    }
 }
 ```
+
+Use `TryAcquireRenderGate` for synchronous callers. Both methods return an
+`IDisposable` lease; the asynchronous method returns `null` on timeout. Take
+`SynchronizationLock` only for the direct write itself, as shown, so new and
+legacy integrations remain mutually exclusive.
 
 CI hosts that prefer strict same-thread ordering over logging throughput can
 skip the background channel entirely:

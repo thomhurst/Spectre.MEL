@@ -48,7 +48,7 @@ internal sealed class SpectreConsoleLoggerProvider : ILoggerProvider, ISupportEx
             : console;
 
         _writer = _options.WriteMode == WriteMode.Synchronous
-            ? new SynchronousWriter(writerConsole, renderer)
+            ? new SynchronousWriter(writerConsole, renderer, _options.ShutdownDrainTimeout)
             : new BackgroundWriter(
                 writerConsole,
                 renderer,
@@ -61,6 +61,12 @@ internal sealed class SpectreConsoleLoggerProvider : ILoggerProvider, ISupportEx
     internal object SynchronizationLock => _writer.SynchronizationLock;
 
     internal Task FlushAsync(CancellationToken cancellationToken) => _writer.FlushAsync(cancellationToken);
+
+    internal bool TryAcquireRenderGate(TimeSpan timeout, out IDisposable? gate) =>
+        _writer.TryAcquireRenderGate(timeout, out gate);
+
+    internal ValueTask<IDisposable?> TryAcquireRenderGateAsync(TimeSpan timeout, CancellationToken cancellationToken) =>
+        _writer.TryAcquireRenderGateAsync(timeout, cancellationToken);
 
     public ILogger CreateLogger(string categoryName)
     {

@@ -7,12 +7,17 @@ internal sealed class SynchronousWriter : ILogEntryWriter
 {
     private readonly LogEntryRenderer _entryRenderer;
     private readonly SequenceCompletionTracker _completionTracker = new();
+    private readonly RenderGate _renderGate = new();
+    private readonly TimeSpan _drainTimeout;
     private OnceFlag _droppedAfterDisposeWarning;
-    private bool _disposed;
+    private OnceFlag _drainTimeoutWarning;
+    private int _disposeStarted;
+    private int _disposed;
 
-    public SynchronousWriter(IAnsiConsole console, ICiRenderer renderer)
+    public SynchronousWriter(IAnsiConsole console, ICiRenderer renderer, TimeSpan drainTimeout)
     {
         _entryRenderer = new LogEntryRenderer(console, renderer);
+        _drainTimeout = drainTimeout;
     }
 
     public object SynchronizationLock { get; } = new();
@@ -22,11 +27,16 @@ internal sealed class SynchronousWriter : ILogEntryWriter
     public void Enqueue(LogEntry entry)
     {
         var sequence = _completionTracker.Begin();
+        var ownsSynchronizationLock = Monitor.IsEntered(SynchronizationLock);
+        if (!ownsSynchronizationLock)
+        {
+            _renderGate.Enter();
+        }
         try
         {
             lock (SynchronizationLock)
             {
-                if (_disposed)
+                if (Volatile.Read(ref _disposed) != 0)
                 {
                     if (_droppedAfterDisposeWarning.TrySet())
                     {
@@ -40,42 +50,48 @@ internal sealed class SynchronousWriter : ILogEntryWriter
         }
         finally
         {
+            if (!ownsSynchronizationLock)
+            {
+                _renderGate.Exit();
+            }
             _completionTracker.Complete(sequence);
         }
     }
 
-    public async Task FlushAsync(CancellationToken cancellationToken)
-    {
-        await _completionTracker.FlushAsync(cancellationToken).ConfigureAwait(false);
-        await WaitForSynchronizationAsync(cancellationToken).ConfigureAwait(false);
-    }
+    public Task FlushAsync(CancellationToken cancellationToken) =>
+        _completionTracker.FlushAsync(cancellationToken);
 
-    private async Task WaitForSynchronizationAsync(CancellationToken cancellationToken)
+    public bool TryAcquireRenderGate(TimeSpan timeout, out IDisposable? gate) =>
+        _renderGate.TryAcquire(timeout, out gate);
+
+    public ValueTask<IDisposable?> TryAcquireRenderGateAsync(TimeSpan timeout, CancellationToken cancellationToken) =>
+        _renderGate.TryAcquireAsync(timeout, cancellationToken);
+
+    public async ValueTask DisposeAsync()
     {
-        while (true)
+        if (Interlocked.Exchange(ref _disposeStarted, 1) != 0)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (Monitor.TryEnter(SynchronizationLock))
-            {
-                Monitor.Exit(SynchronizationLock);
-                return;
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken).ConfigureAwait(false);
+            return;
         }
-    }
 
-    public ValueTask DisposeAsync()
-    {
-        lock (SynchronizationLock)
+        var gate = await _renderGate.TryAcquireAsync(_drainTimeout, CancellationToken.None).ConfigureAwait(false);
+        if (gate is null)
         {
-            if (!_disposed)
+            Volatile.Write(ref _disposed, 1);
+            if (_drainTimeoutWarning.TrySet())
             {
-                _disposed = true;
+                LogWriterDiagnostics.Emit($"MEL.Spectre: synchronous drain timeout after {_drainTimeout}; open scopes may remain.");
+            }
+            return;
+        }
+
+        using (gate)
+        {
+            lock (SynchronizationLock)
+            {
+                Volatile.Write(ref _disposed, 1);
                 _entryRenderer.CloseAllScopes();
             }
         }
-
-        return ValueTask.CompletedTask;
     }
 }
