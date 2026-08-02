@@ -134,6 +134,25 @@ public class MessageFormatterTests
     }
 
     [Test]
+    public async Task Value_pattern_scanning_masks_link_target_attributes()
+    {
+        var masker = new SecretMasker([], [@"secret-\w+"], 256);
+        var collected = new List<string>();
+
+        var result = MessageFormatter.Render(
+            "[link=https://host/secret-value]click[/]",
+            "fallback",
+            [],
+            SpectreTheme.Monochrome,
+            masker,
+            collected,
+            allowMarkupInTemplate: true);
+
+        await Assert.That(result).IsEqualTo("[link=https://host/***]click[/]");
+        await Assert.That(collected).Contains("secret-value");
+    }
+
+    [Test]
     public async Task Value_pattern_scanning_preserves_unmatched_converted_ansi_styling()
     {
         var masker = new SecretMasker([], [@"secret-\w+"], 256);
@@ -197,6 +216,22 @@ public class MessageFormatterTests
         var result = MessageFormatter.Render(
             null,
             "\x1b[32msafe \x1b[0;31msecret-value\x1b[0m",
+            [],
+            SpectreTheme.Monochrome,
+            masker,
+            embeddedAnsi: EmbeddedAnsiMode.Passthrough);
+
+        await Assert.That(result).IsEqualTo("\x1b[[32msafe \x1b[[0m***");
+    }
+
+    [Test]
+    public async Task Passthrough_masking_splits_direct_restyle()
+    {
+        var masker = new SecretMasker([], [@"secret-value"], 256);
+
+        var result = MessageFormatter.Render(
+            null,
+            "\x1b[32msafe \x1b[31msecret-value\x1b[0m",
             [],
             SpectreTheme.Monochrome,
             masker,

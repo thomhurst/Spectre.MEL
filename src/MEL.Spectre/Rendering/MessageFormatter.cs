@@ -167,6 +167,7 @@ internal static class MessageFormatter
             // markup unchanged so that validation can select the escaped fallback path.
             return rendered;
         }
+        var attributeMaskedRendered = MaskMarkupLinkTargets(rendered, masker, collectMaskValues);
         if (AnsiSanitizer.ContainsAnsi(plainText))
         {
             plainText = StripAnsiForMasking(plainText);
@@ -176,10 +177,50 @@ internal static class MessageFormatter
         var ranges = masker.GetValuePatternMaskRanges(plainText, collectMaskValues);
         if (ranges.Count == 0)
         {
+            return attributeMaskedRendered;
+        }
+
+        return MaskRenderedText(attributeMaskedRendered, ranges);
+    }
+
+    private static string MaskMarkupLinkTargets(string rendered, SecretMasker masker, List<string>? collectMaskValues)
+    {
+        StringBuilder? builder = null;
+        var copiedLength = 0;
+
+        for (var i = 0; i < rendered.Length;)
+        {
+            if (!TryReadMarkupTag(rendered, i, out var tagEnd))
+            {
+                i++;
+                continue;
+            }
+
+            if (tagEnd - i > 7 && rendered.AsSpan(i + 1, 5).Equals("link=", StringComparison.OrdinalIgnoreCase))
+            {
+                var targetStart = i + 6;
+                var targetEnd = tagEnd - 1;
+                var target = rendered[targetStart..targetEnd];
+                var maskedTarget = masker.MaskValuePatterns(target, collectMaskValues);
+                if (!string.Equals(target, maskedTarget, StringComparison.Ordinal))
+                {
+                    builder ??= new StringBuilder(rendered.Length);
+                    builder.Append(rendered, copiedLength, targetStart - copiedLength);
+                    builder.Append(maskedTarget);
+                    copiedLength = targetEnd;
+                }
+            }
+
+            i = tagEnd;
+        }
+
+        if (builder is null)
+        {
             return rendered;
         }
 
-        return MaskRenderedText(rendered, ranges);
+        builder.Append(rendered, copiedLength, rendered.Length - copiedLength);
+        return builder.ToString();
     }
 
     private static string MaskRenderedText(string rendered, List<SecretMasker.MaskRange> ranges)
@@ -331,7 +372,7 @@ internal static class MessageFormatter
                 ConsumeRenderedAnsiSequence(rendered, ref i, ref ansi, trackStyle: true);
                 var isActive = ansi.HasActiveStyle;
 
-                if (wasActive && isActive && ansi.LastSequenceReset)
+                if (wasActive && isActive && (ansi.LastSequenceReset || ansi.LastSequenceChangedStyle))
                 {
                     var priorIntersects = IntersectsMask(activeStart, visibleIndex, ranges);
                     RewriteAnsiSpan(activeSequences, priorIntersects, activeResetReplacement, rewritten);
