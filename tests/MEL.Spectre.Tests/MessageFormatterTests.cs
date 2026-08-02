@@ -190,6 +190,22 @@ public class MessageFormatterTests
     }
 
     [Test]
+    public async Task Passthrough_masking_splits_compound_reset_and_restyle()
+    {
+        var masker = new SecretMasker([], [@"secret-value"], 256);
+
+        var result = MessageFormatter.Render(
+            null,
+            "\x1b[32msafe \x1b[0;31msecret-value\x1b[0m",
+            [],
+            SpectreTheme.Monochrome,
+            masker,
+            embeddedAnsi: EmbeddedAnsiMode.Passthrough);
+
+        await Assert.That(result).IsEqualTo("\x1b[[32msafe \x1b[[0m***");
+    }
+
+    [Test]
     public async Task Passthrough_ansi_masking_preserves_CRLF_index_alignment()
     {
         var masker = new SecretMasker([], [@"secret-value"], 256);

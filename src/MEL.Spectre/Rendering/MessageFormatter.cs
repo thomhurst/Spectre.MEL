@@ -175,7 +175,7 @@ internal static class MessageFormatter
     private static string MaskRenderedText(string rendered, List<SecretMasker.MaskRange> ranges)
     {
         var droppedTags = FindFullyMaskedMarkupTags(rendered, ranges);
-        var droppedAnsi = FindMaskedAnsiSequences(rendered, ranges);
+        var rewrittenAnsi = RewriteMaskedAnsiSequences(rendered, ranges);
         var builder = new StringBuilder(rendered.Length);
         var visibleIndex = 0;
         var rangeIndex = 0;
@@ -197,7 +197,11 @@ internal static class MessageFormatter
             {
                 var sequenceStart = i;
                 ConsumeRenderedAnsiSequence(rendered, ref i, ref ansi);
-                if (!droppedAnsi.Contains(sequenceStart))
+                if (rewrittenAnsi.TryGetValue(sequenceStart, out var replacement))
+                {
+                    builder.Append(replacement);
+                }
+                else
                 {
                     builder.Append(rendered, sequenceStart, i - sequenceStart);
                 }
@@ -293,10 +297,11 @@ internal static class MessageFormatter
         return dropped;
     }
 
-    private static HashSet<int> FindMaskedAnsiSequences(string rendered, List<SecretMasker.MaskRange> ranges)
+    private static Dictionary<int, string> RewriteMaskedAnsiSequences(string rendered, List<SecretMasker.MaskRange> ranges)
     {
-        var dropped = new HashSet<int>();
+        var rewritten = new Dictionary<int, string>();
         List<int>? activeSequences = null;
+        string? activeResetReplacement = null;
         var activeStart = 0;
         var visibleIndex = 0;
         var ansi = new AnsiMarkupState();
@@ -316,10 +321,20 @@ internal static class MessageFormatter
                 ConsumeRenderedAnsiSequence(rendered, ref i, ref ansi, trackStyle: true);
                 var isActive = ansi.HasActiveStyle;
 
-                if (!wasActive && isActive)
+                if (wasActive && isActive && ansi.LastSequenceReset)
+                {
+                    var priorIntersects = IntersectsMask(activeStart, visibleIndex, ranges);
+                    RewriteAnsiSpan(activeSequences, priorIntersects, activeResetReplacement, rewritten);
+
+                    activeStart = visibleIndex;
+                    activeSequences = [sequenceStart];
+                    activeResetReplacement = priorIntersects ? null : GetResetSequence(rendered, sequenceStart);
+                }
+                else if (!wasActive && isActive)
                 {
                     activeStart = visibleIndex;
                     activeSequences = [sequenceStart];
+                    activeResetReplacement = null;
                 }
                 else if (wasActive)
                 {
@@ -327,16 +342,14 @@ internal static class MessageFormatter
                     activeSequences.Add(sequenceStart);
                     if (!isActive)
                     {
-                        if (IntersectsMask(activeStart, visibleIndex, ranges))
-                        {
-                            dropped.UnionWith(activeSequences);
-                        }
+                        RewriteAnsiSpan(activeSequences, IntersectsMask(activeStart, visibleIndex, ranges), activeResetReplacement, rewritten);
                         activeSequences = null;
+                        activeResetReplacement = null;
                     }
                 }
                 else if (IsInsideOrAtRangeBoundary(visibleIndex, ranges))
                 {
-                    dropped.Add(sequenceStart);
+                    rewritten[sequenceStart] = string.Empty;
                 }
                 continue;
             }
@@ -355,13 +368,37 @@ internal static class MessageFormatter
             visibleIndex++;
         }
 
-        if (activeSequences is not null && IntersectsMask(activeStart, visibleIndex, ranges))
+        if (activeSequences is not null)
         {
-            dropped.UnionWith(activeSequences);
+            RewriteAnsiSpan(activeSequences, IntersectsMask(activeStart, visibleIndex, ranges), activeResetReplacement, rewritten);
         }
 
-        return dropped;
+        return rewritten;
     }
+
+    private static void RewriteAnsiSpan(List<int>? sequences, bool intersectsMask, string? resetReplacement, Dictionary<int, string> rewritten)
+    {
+        if (!intersectsMask || sequences is null)
+        {
+            return;
+        }
+
+        for (var i = 0; i < sequences.Count; i++)
+        {
+            rewritten[sequences[i]] = string.Empty;
+        }
+        if (resetReplacement is not null)
+        {
+            rewritten[sequences[0]] = resetReplacement;
+        }
+    }
+
+    private static string GetResetSequence(string rendered, int start) =>
+        rendered[start] == AnsiSanitizer.CsiChar
+            ? "\x9b0m"
+            : start + 2 < rendered.Length && rendered[start + 1] == '[' && rendered[start + 2] == '['
+                ? "\x1b[[0m"
+                : "\x1b[0m";
 
     private static bool TryReadMarkupTag(string text, int start, out int end)
     {

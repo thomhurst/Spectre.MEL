@@ -92,11 +92,18 @@ internal struct AnsiMarkupState
     private Decoration _decoration;
     private bool _tagOpen;
     private bool _stylePending;
+    private bool _lastSequenceReset;
 
     internal readonly bool HasActiveStyle =>
         _foreground is not null || _background is not null || _decoration != Decoration.None;
 
-    internal void ApplySgrParameters(ReadOnlySpan<char> parameters) => ApplySgr(parameters);
+    internal readonly bool LastSequenceReset => _lastSequenceReset;
+
+    internal void ApplySgrParameters(ReadOnlySpan<char> parameters)
+    {
+        _lastSequenceReset = false;
+        ApplySgr(parameters);
+    }
 
     /// <summary>
     /// Consumes the control sequence starting at <paramref name="i"/> (an ESC or 8-bit CSI character) and
@@ -105,6 +112,7 @@ internal struct AnsiMarkupState
     /// </summary>
     public void ConsumeSequence(string text, ref int i, bool convert)
     {
+        _lastSequenceReset = false;
         switch (text[i])
         {
             case AnsiSanitizer.CsiChar:
@@ -232,6 +240,7 @@ internal struct AnsiMarkupState
 
         if (parameters.IsEmpty)
         {
+            _lastSequenceReset = true;
             Reset();
             return;
         }
@@ -282,7 +291,7 @@ internal struct AnsiMarkupState
         {
             switch (values[k])
             {
-                case 0: Reset(); break;
+                case 0: _lastSequenceReset = true; Reset(); break;
                 case 1: _decoration |= Decoration.Bold; break;
                 case 2: _decoration |= Decoration.Dim; break;
                 case 3: _decoration |= Decoration.Italic; break;
