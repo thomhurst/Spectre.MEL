@@ -78,7 +78,7 @@ internal abstract class CiRendererBase : ICiRenderer
             }
             else
             {
-                console.MarkupLine(Markup.Escape(entry.Exception.ToString()));
+                console.MarkupLine(Markup.Escape(FormatExceptionForAot(entry.Exception, _context.ExceptionFormats)));
             }
         }
     }
@@ -93,4 +93,15 @@ internal abstract class CiRendererBase : ICiRenderer
 
     protected static void WriteCommand(IAnsiConsole console, string command) =>
         console.Profile.Out.Writer.WriteLine(command);
+
+    internal static string FormatExceptionForAot(Exception exception, ExceptionFormats formats)
+    {
+        if ((formats & ExceptionFormats.NoStackTrace) == 0)
+        {
+            return exception.ToString();
+        }
+
+        var typeName = exception.GetType().FullName ?? exception.GetType().Name;
+        return string.Concat(typeName, ": ", exception.Message);
+    }
 }

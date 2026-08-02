@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using MEL.Spectre.Ci;
+using Spectre.Console;
 using TUnit.Assertions;
 using TUnit.Assertions.Extensions;
 
@@ -8,6 +9,28 @@ namespace MEL.Spectre.Tests;
 public class CiRendererTests
 {
     private const string AddMaskPrefix = "::add-mask::";
+
+    [Test]
+    public async Task Aot_exception_fallback_honors_NoStackTrace()
+    {
+        Exception exception;
+        try
+        {
+            throw new InvalidOperationException("private failure");
+        }
+        catch (Exception ex)
+        {
+            exception = ex;
+        }
+
+        var text = CiRendererBase.FormatExceptionForAot(exception, ExceptionFormats.NoStackTrace);
+        var textWithStack = CiRendererBase.FormatExceptionForAot(exception, ExceptionFormats.Default);
+
+        await Assert.That(text).Contains("InvalidOperationException: private failure");
+        await Assert.That(text).DoesNotContain(" at ");
+        await Assert.That(text).DoesNotContain(nameof(Aot_exception_fallback_honors_NoStackTrace));
+        await Assert.That(textWithStack).Contains(nameof(Aot_exception_fallback_honors_NoStackTrace));
+    }
 
     [Test]
     public async Task AzurePipelines_emits_group_endgroup_markers()
