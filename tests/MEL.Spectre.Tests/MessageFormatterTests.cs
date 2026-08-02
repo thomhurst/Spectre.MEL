@@ -174,6 +174,22 @@ public class MessageFormatterTests
     }
 
     [Test]
+    public async Task Passthrough_masking_preserves_balanced_ANSI_outside_mask()
+    {
+        var masker = new SecretMasker([], [@"secret-value"], 256);
+
+        var result = MessageFormatter.Render(
+            null,
+            "\x1b[32msafe\x1b[0m sec\x1b[31mret-value",
+            [],
+            SpectreTheme.Monochrome,
+            masker,
+            embeddedAnsi: EmbeddedAnsiMode.Passthrough);
+
+        await Assert.That(result).IsEqualTo("\x1b[[32msafe\x1b[[0m ***");
+    }
+
+    [Test]
     public async Task Passthrough_ansi_masking_preserves_CRLF_index_alignment()
     {
         var masker = new SecretMasker([], [@"secret-value"], 256);

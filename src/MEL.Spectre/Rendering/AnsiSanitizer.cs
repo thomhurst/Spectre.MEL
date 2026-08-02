@@ -93,6 +93,11 @@ internal struct AnsiMarkupState
     private bool _tagOpen;
     private bool _stylePending;
 
+    internal readonly bool HasActiveStyle =>
+        _foreground is not null || _background is not null || _decoration != Decoration.None;
+
+    internal void ApplySgrParameters(ReadOnlySpan<char> parameters) => ApplySgr(parameters);
+
     /// <summary>
     /// Consumes the control sequence starting at <paramref name="i"/> (an ESC or 8-bit CSI character) and
     /// advances <paramref name="i"/> past it. SGR sequences update the pending style when

@@ -175,7 +175,7 @@ internal static class MessageFormatter
     private static string MaskRenderedText(string rendered, List<SecretMasker.MaskRange> ranges)
     {
         var droppedTags = FindFullyMaskedMarkupTags(rendered, ranges);
-        var dropAnsi = HasAnsiSequenceInMask(rendered, ranges);
+        var droppedAnsi = FindMaskedAnsiSequences(rendered, ranges);
         var builder = new StringBuilder(rendered.Length);
         var visibleIndex = 0;
         var rangeIndex = 0;
@@ -197,7 +197,7 @@ internal static class MessageFormatter
             {
                 var sequenceStart = i;
                 ConsumeRenderedAnsiSequence(rendered, ref i, ref ansi);
-                if (!dropAnsi)
+                if (!droppedAnsi.Contains(sequenceStart))
                 {
                     builder.Append(rendered, sequenceStart, i - sequenceStart);
                 }
@@ -293,8 +293,11 @@ internal static class MessageFormatter
         return dropped;
     }
 
-    private static bool HasAnsiSequenceInMask(string rendered, List<SecretMasker.MaskRange> ranges)
+    private static HashSet<int> FindMaskedAnsiSequences(string rendered, List<SecretMasker.MaskRange> ranges)
     {
+        var dropped = new HashSet<int>();
+        List<int>? activeSequences = null;
+        var activeStart = 0;
         var visibleIndex = 0;
         var ansi = new AnsiMarkupState();
 
@@ -308,12 +311,33 @@ internal static class MessageFormatter
 
             if (AnsiSanitizer.IsSequenceIntroducer(rendered[i]))
             {
-                if (IsInsideOrAtRangeBoundary(visibleIndex, ranges))
-                {
-                    return true;
-                }
+                var sequenceStart = i;
+                var wasActive = ansi.HasActiveStyle;
+                ConsumeRenderedAnsiSequence(rendered, ref i, ref ansi, trackStyle: true);
+                var isActive = ansi.HasActiveStyle;
 
-                ConsumeRenderedAnsiSequence(rendered, ref i, ref ansi);
+                if (!wasActive && isActive)
+                {
+                    activeStart = visibleIndex;
+                    activeSequences = [sequenceStart];
+                }
+                else if (wasActive)
+                {
+                    activeSequences ??= [];
+                    activeSequences.Add(sequenceStart);
+                    if (!isActive)
+                    {
+                        if (IntersectsMask(activeStart, visibleIndex, ranges))
+                        {
+                            dropped.UnionWith(activeSequences);
+                        }
+                        activeSequences = null;
+                    }
+                }
+                else if (IsInsideOrAtRangeBoundary(visibleIndex, ranges))
+                {
+                    dropped.Add(sequenceStart);
+                }
                 continue;
             }
 
@@ -331,7 +355,12 @@ internal static class MessageFormatter
             visibleIndex++;
         }
 
-        return false;
+        if (activeSequences is not null && IntersectsMask(activeStart, visibleIndex, ranges))
+        {
+            dropped.UnionWith(activeSequences);
+        }
+
+        return dropped;
     }
 
     private static bool TryReadMarkupTag(string text, int start, out int end)
@@ -399,21 +428,27 @@ internal static class MessageFormatter
         return builder.ToString();
     }
 
-    private static void ConsumeRenderedAnsiSequence(string text, ref int index, ref AnsiMarkupState ansi)
+    private static void ConsumeRenderedAnsiSequence(string text, ref int index, ref AnsiMarkupState ansi, bool trackStyle = false)
     {
         if (text[index] == AnsiSanitizer.EscapeChar &&
             index + 2 < text.Length &&
             text[index + 1] == '[' &&
             text[index + 2] == '[')
         {
-            var current = index + 3;
+            var parameterStart = index + 3;
+            var current = parameterStart;
             while (current < text.Length && text[current] >= '\x30' && text[current] <= '\x3f')
             {
                 current++;
             }
+            var parameterEnd = current;
             while (current < text.Length && text[current] >= '\x20' && text[current] <= '\x2f')
             {
                 current++;
+            }
+            if (trackStyle && current < text.Length && text[current] == 'm' && parameterEnd == current)
+            {
+                ansi.ApplySgrParameters(text.AsSpan(parameterStart, parameterEnd - parameterStart));
             }
             index = current < text.Length && text[current] >= '\x40' && text[current] <= '\x7e'
                 ? current + 1
@@ -421,7 +456,7 @@ internal static class MessageFormatter
             return;
         }
 
-        ansi.ConsumeSequence(text, ref index, convert: false);
+        ansi.ConsumeSequence(text, ref index, convert: trackStyle);
     }
 
     private static bool IsFullyCovered(int start, int end, List<SecretMasker.MaskRange> ranges)
@@ -450,6 +485,18 @@ internal static class MessageFormatter
             }
         }
         return false;
+    }
+
+    private static bool IntersectsMask(int start, int end, List<SecretMasker.MaskRange> ranges)
+    {
+        for (var i = 0; i < ranges.Count && ranges[i].Start < end; i++)
+        {
+            if (ranges[i].End > start)
+            {
+                return true;
+            }
+        }
+        return start == end && IsInsideOrAtRangeBoundary(start, ranges);
     }
 
     private static Placeholder FindPlaceholder(Placeholder[] placeholders, string name, ref int positionalIndex)
