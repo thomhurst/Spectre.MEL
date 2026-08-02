@@ -30,7 +30,7 @@ emit collapsible groups, level annotations, and (where supported) secret masks:
 Jenkins, CircleCI, and AppVeyor are detected and use a passthrough renderer:
 plain ANSI output with no grouping or annotations.
 
-## Install
+## Installation
 
 ```sh
 dotnet add package MEL.Spectre
