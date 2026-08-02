@@ -420,6 +420,23 @@ public class OutputImprovementsTests
     }
 
     [Test]
+    public async Task Zero_width_value_pattern_handles_empty_exception_message()
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            logger.LogError(new Exception(string.Empty), "failure");
+        }, o =>
+        {
+            o.MaskedValuePatterns.Clear();
+            o.MaskedValuePatterns.Add(@"^$");
+            o.Template = "{Message}";
+        });
+
+        await Assert.That(output).Contains("failure");
+        await Assert.That(output).Contains("***");
+    }
+
+    [Test]
     public async Task Default_value_pattern_masks_entire_private_key_in_exception()
     {
         const string PrivateKey = "-----BEGIN PRIVATE KEY-----\nYWJjZGVmZ2hpamtsbW5vcA==\n-----END PRIVATE KEY-----";

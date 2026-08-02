@@ -196,7 +196,9 @@ internal abstract class CiRendererBase : ICiRenderer
         {
             if (_context.Masker.TryMaskValuePatterns(normalizedMessages[i], maskValues, out var maskedMessage))
             {
-                maskedException = maskedException.Replace(exceptions[i].Message, maskedMessage, StringComparison.Ordinal);
+                maskedException = exceptions[i].Message.Length == 0
+                    ? maskedMessage
+                    : maskedException.Replace(exceptions[i].Message, maskedMessage, StringComparison.Ordinal);
                 found = true;
             }
         }
