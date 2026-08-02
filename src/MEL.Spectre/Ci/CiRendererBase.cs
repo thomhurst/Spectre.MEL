@@ -170,6 +170,9 @@ internal abstract class CiRendererBase : ICiRenderer
         }
 
         var exceptions = EnumerateExceptions(exception).ToArray();
+        var normalizedMessages = exceptions
+            .Select(current => PlaceholderFormatter.NormalizeForMasking(current.Message))
+            .ToArray();
         var renderOptions = RenderOptions.Create(console) with
         {
             ConsoleSize = new Size(ExceptionMaskingRenderWidth, console.Profile.Height),
@@ -182,18 +185,18 @@ internal abstract class CiRendererBase : ICiRenderer
 
         var exceptionText = builder.ToString();
         if (!_context.Masker.ShouldMaskValue(exceptionText)
-            && !exceptions.Any(current => _context.Masker.ShouldMaskValue(current.Message)))
+            && !normalizedMessages.Any(_context.Masker.ShouldMaskValue))
         {
             return null;
         }
 
         var found = _context.Masker.TryMaskValuePatterns(exceptionText, maskValues, out var maskedException);
 
-        foreach (var current in exceptions)
+        for (var i = 0; i < exceptions.Length; i++)
         {
-            if (_context.Masker.TryMaskValuePatterns(current.Message, maskValues, out var maskedMessage))
+            if (_context.Masker.TryMaskValuePatterns(normalizedMessages[i], maskValues, out var maskedMessage))
             {
-                maskedException = maskedException.Replace(current.Message, maskedMessage, StringComparison.Ordinal);
+                maskedException = maskedException.Replace(exceptions[i].Message, maskedMessage, StringComparison.Ordinal);
                 found = true;
             }
         }

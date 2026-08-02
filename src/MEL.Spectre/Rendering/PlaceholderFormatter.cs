@@ -56,7 +56,7 @@ internal static class PlaceholderFormatter
         return ($"[{style.ToMarkup()}]{safe}[/]", null, false);
     }
 
-    private static string NormalizeForMasking(string text) =>
+    internal static string NormalizeForMasking(string text) =>
         AnsiSanitizer.ContainsAnsi(text)
             ? AnsiSanitizer.EscapeAndSanitize(text, EmbeddedAnsiMode.Strip, escapeMarkup: false)
             : text;
