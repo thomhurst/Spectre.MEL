@@ -110,6 +110,24 @@ public class MessageFormatterTests
     }
 
     [Test]
+    public async Task Value_pattern_scanning_applies_backspaces_before_matching()
+    {
+        var masker = new SecretMasker([], [@"secret-\w+"], 256);
+        var collected = new List<string>();
+
+        var result = MessageFormatter.Render(
+            null,
+            "seX\bcret-value",
+            [],
+            SpectreTheme.Monochrome,
+            masker,
+            collected);
+
+        await Assert.That(result).IsEqualTo("***");
+        await Assert.That(collected).Contains("secret-value");
+    }
+
+    [Test]
     public async Task Default_value_patterns_mask_entire_private_key_block()
     {
         const string privateKey = "-----BEGIN PRIVATE KEY-----\nYWJjZGVmZ2hpamtsbW5vcA==\n-----END PRIVATE KEY-----";

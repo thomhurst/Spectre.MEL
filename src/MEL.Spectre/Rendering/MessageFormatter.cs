@@ -175,7 +175,8 @@ internal static class MessageFormatter
         {
             plainText = StripAnsiForMasking(plainText);
         }
-        plainText = DropInvisibleControls(plainText);
+        var hasBackspace = plainText.Contains('\b');
+        plainText = NormalizeInvisibleControls(plainText);
 
         var ranges = masker.GetValuePatternMaskRanges(plainText, collectMaskValues);
         if (ranges.Count == 0)
@@ -183,7 +184,7 @@ internal static class MessageFormatter
             return emissionMaskedRendered;
         }
 
-        return MaskRenderedText(emissionMaskedRendered, ranges);
+        return hasBackspace ? "***" : MaskRenderedText(emissionMaskedRendered, ranges);
     }
 
     private static string MaskMarkupLinkTargets(string rendered, SecretMasker masker, List<string>? collectMaskValues)
@@ -658,7 +659,7 @@ internal static class MessageFormatter
     private static bool IsDroppedControl(char value) =>
         char.IsControl(value) && value != '\r' && value != '\n' && value != '\t';
 
-    private static string DropInvisibleControls(string text)
+    private static string NormalizeInvisibleControls(string text)
     {
         var firstControl = -1;
         for (var i = 0; i < text.Length; i++)
@@ -677,11 +678,21 @@ internal static class MessageFormatter
 
         var builder = new StringBuilder(text.Length);
         builder.Append(text, 0, firstControl);
-        for (var i = firstControl + 1; i < text.Length; i++)
+        for (var i = firstControl; i < text.Length; i++)
         {
-            if (!IsDroppedControl(text[i]))
+            var current = text[i];
+            if (current == '\b')
             {
-                builder.Append(text[i]);
+                if (builder.Length > 0 && builder[^1] is not '\r' and not '\n')
+                {
+                    builder.Length--;
+                }
+                continue;
+            }
+
+            if (!IsDroppedControl(current))
+            {
+                builder.Append(current);
             }
         }
         return builder.ToString();
