@@ -333,6 +333,56 @@ public class OutputImprovementsTests
     }
 
     [Test]
+    public async Task Anchored_value_pattern_masks_exception_message()
+    {
+        const string Secret = "Bearer abc.def";
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            logger.LogError(new InvalidOperationException(Secret), "operation failed");
+        }, o =>
+        {
+            o.MaskedValuePatterns.Clear();
+            o.MaskedValuePatterns.Add(@"^Bearer\s+\S+$");
+            o.Template = "{Message}";
+        });
+
+        await Assert.That(output).Contains("***");
+        await Assert.That(output).DoesNotContain(Secret);
+    }
+
+    [Test]
+    public async Task Anchored_value_pattern_masks_inner_exception_message()
+    {
+        const string Secret = "Bearer inner.secret";
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            var inner = new ArgumentException(Secret);
+            logger.LogError(new InvalidOperationException("operation failed", inner), "failure");
+        }, o =>
+        {
+            o.MaskedValuePatterns.Clear();
+            o.MaskedValuePatterns.Add(@"^Bearer\s+\S+$");
+            o.Template = "{Message}";
+        });
+
+        await Assert.That(output).Contains("***");
+        await Assert.That(output).DoesNotContain(Secret);
+    }
+
+    [Test]
+    public async Task Default_value_pattern_masks_entire_private_key_in_exception()
+    {
+        const string PrivateKey = "-----BEGIN PRIVATE KEY-----\nYWJjZGVmZ2hpamtsbW5vcA==\n-----END PRIVATE KEY-----";
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            logger.LogError(new InvalidOperationException(PrivateKey), "operation failed");
+        }, o => o.Template = "{Message}");
+
+        await Assert.That(output).Contains("***");
+        await Assert.That(output).DoesNotContain("YWJjZGVmZ2hpamtsbW5vcA==");
+    }
+
+    [Test]
     public async Task MaskedValuePatterns_does_nothing_for_non_matching_value()
     {
         var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>

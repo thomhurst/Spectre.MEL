@@ -164,8 +164,14 @@ internal abstract class CiRendererBase : ICiRenderer
     private string? MaskException(Exception? exception, IAnsiConsole console, List<string> maskValues)
     {
         if (exception is null
-            || !_context.Masker.HasValuePatterns
-            || !_context.Masker.ShouldMaskValue(exception.ToString()))
+            || !_context.Masker.HasValuePatterns)
+        {
+            return null;
+        }
+
+        var exceptions = EnumerateExceptions(exception).ToArray();
+        if (!_context.Masker.ShouldMaskValue(exception.ToString())
+            && !exceptions.Any(current => _context.Masker.ShouldMaskValue(current.Message)))
         {
             return null;
         }
@@ -181,8 +187,45 @@ internal abstract class CiRendererBase : ICiRenderer
         }
 
         var exceptionText = builder.ToString();
-        return _context.Masker.TryMaskValuePatterns(exceptionText, maskValues, out var maskedException)
-            ? maskedException
-            : null;
+        var found = _context.Masker.TryMaskValuePatterns(exceptionText, maskValues, out var maskedException);
+
+        foreach (var current in exceptions)
+        {
+            if (_context.Masker.TryMaskValuePatterns(current.Message, maskValues, out var maskedMessage))
+            {
+                maskedException = maskedException.Replace(current.Message, maskedMessage, StringComparison.Ordinal);
+                found = true;
+            }
+        }
+
+        return found ? maskedException : null;
+    }
+
+    private static IEnumerable<Exception> EnumerateExceptions(Exception root)
+    {
+        var pending = new Stack<Exception>();
+        var visited = new HashSet<Exception>(ReferenceEqualityComparer.Instance);
+        pending.Push(root);
+
+        while (pending.TryPop(out var current))
+        {
+            if (!visited.Add(current))
+            {
+                continue;
+            }
+
+            yield return current;
+            if (current is AggregateException aggregate)
+            {
+                for (var i = aggregate.InnerExceptions.Count - 1; i >= 0; i--)
+                {
+                    pending.Push(aggregate.InnerExceptions[i]);
+                }
+            }
+            else if (current.InnerException is not null)
+            {
+                pending.Push(current.InnerException);
+            }
+        }
     }
 }
