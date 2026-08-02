@@ -17,4 +17,6 @@ internal interface ICiRenderer
     void CloseScope(IAnsiConsole console, ScopeFrame frame, int depth);
 
     void RenderEntry(IAnsiConsole console, LogEntry entry, int scopeDepth);
+
+    void RenderEntryFallback(IAnsiConsole console, LogEntry entry, int scopeDepth);
 }

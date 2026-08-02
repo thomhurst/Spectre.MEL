@@ -29,7 +29,15 @@ internal sealed class LogEntryRenderer
         }
         catch (Exception ex) when (!FatalExceptions.IsFatal(ex))
         {
-            LogWriterDiagnostics.Emit($"MEL.Spectre: render fault: {ex}");
+            try
+            {
+                _renderer.RenderEntryFallback(_console, entry, _activeScopes.Count);
+                LogWriterDiagnostics.Emit($"MEL.Spectre: render fault recovered with escaped plain text: {ex}");
+            }
+            catch (Exception fallbackEx) when (!FatalExceptions.IsFatal(fallbackEx))
+            {
+                LogWriterDiagnostics.Emit($"MEL.Spectre: render fault: {ex}{Environment.NewLine}MEL.Spectre: fallback render fault: {fallbackEx}");
+            }
         }
     }
 

@@ -405,6 +405,36 @@ public class CiRendererTests
     }
 
     [Test]
+    public async Task AllowMarkupInMessageTemplate_invalid_markup_falls_back_to_plain_text()
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            logger.LogInformation("Restoring [my.csproj]");
+        }, o =>
+        {
+            o.AllowMarkupInMessageTemplate = true;
+            o.Template = "{Message}";
+        });
+
+        await Assert.That(output).Contains("Restoring [my.csproj]");
+    }
+
+    [Test]
+    public async Task GitHubActions_invalid_markup_annotation_falls_back_to_plain_text()
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.GitHubActions, logger =>
+        {
+            logger.LogWarning("Restoring [my.csproj]");
+        }, o =>
+        {
+            o.AllowMarkupInMessageTemplate = true;
+            o.Template = "{Message}";
+        });
+
+        await Assert.That(output).Contains("::warning::Restoring [my.csproj]");
+    }
+
+    [Test]
     public async Task AllowMarkupInMessageTemplate_off_escapes_markup_tags()
     {
         var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
