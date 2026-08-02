@@ -144,6 +144,23 @@ public class CiRendererTests
     }
 
     [Test]
+    public async Task TeamCity_masks_value_patterns_in_service_messages()
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.TeamCity, logger =>
+        {
+            logger.LogWarning("Token secret-value");
+        }, o =>
+        {
+            o.MaskedValuePatterns.Clear();
+            o.MaskedValuePatterns.Add(@"secret-\w+");
+            o.Template = "{Message}";
+        });
+
+        await Assert.That(output).Contains("##teamcity[message text='Token ***' status='WARNING']");
+        await Assert.That(output).DoesNotContain("secret-value");
+    }
+
+    [Test]
     public async Task TeamCity_escapes_pipe_quote_brackets_newlines_in_scope_label()
     {
         var output = await LogTestHarness.CaptureAsync(CiMode.TeamCity, logger =>

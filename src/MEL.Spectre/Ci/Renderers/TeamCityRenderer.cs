@@ -30,7 +30,7 @@ internal sealed class TeamCityRenderer : CiRendererBase
         if (annotation is CiAnnotation.Error or CiAnnotation.Warning)
         {
             var status = annotation == CiAnnotation.Error ? "ERROR" : "WARNING";
-            WriteCommand(console, $"##teamcity[message text='{Escape(entry.Message)}' status='{status}']");
+            WriteCommand(console, $"##teamcity[message text='{Escape(FormatPlainMessage(entry))}' status='{status}']");
         }
         base.RenderEntry(console, entry, scopeDepth);
     }

@@ -118,6 +118,9 @@ internal abstract class CiRendererBase : ICiRenderer
 
     protected virtual string? BuildIndent(int depth) => null;
 
+    protected string FormatPlainMessage(LogEntry entry) =>
+        Markup.Remove(_context.Formatter.FormatMessage(entry, escapeMessageMarkup: true));
+
     protected static void WriteCommand(IAnsiConsole console, string command) =>
         console.Profile.Out.Writer.WriteLine(command);
 
