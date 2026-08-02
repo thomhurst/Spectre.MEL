@@ -529,6 +529,21 @@ public class OutputImprovementsTests
     }
 
     [Test]
+    public async Task Delete_character_obfuscated_exception_secret_emits_add_mask_in_github_actions()
+    {
+        var secret = $"ghp_{new string('a', 36)}";
+        var obfuscatedSecret = secret.Insert(20, "X") + "\x1b[21D\x1b[P";
+        var output = await LogTestHarness.CaptureAsync(CiMode.GitHubActions, logger =>
+        {
+            logger.LogError(new InvalidOperationException(obfuscatedSecret), "failure");
+        }, o => o.Template = "{Message}");
+
+        await Assert.That(output).Contains($"::add-mask::{secret}");
+        await Assert.That(output).Contains("***");
+        await Assert.That(output).DoesNotContain(obfuscatedSecret);
+    }
+
+    [Test]
     public async Task Carriage_overwritten_exception_secret_emits_add_mask_in_github_actions()
     {
         var secret = $"ghp_{new string('a', 36)}";
@@ -668,5 +683,44 @@ public class OutputImprovementsTests
 
         public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options) =>
             writer.WriteStringValue(value ?? "custom-null");
+    }
+
+    [Test]
+    public async Task Overlapping_outer_and_inner_exception_patterns_mask_as_one_range_set()
+    {
+        const string InnerSecret = "Bearer secret-prefix.secret-suffix";
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            var inner = new ArgumentException(InnerSecret);
+            logger.LogError(new InvalidOperationException("secret-prefix", inner), "failure");
+        }, o =>
+        {
+            o.MaskedValuePatterns.Clear();
+            o.MaskedValuePatterns.Add("secret-prefix");
+            o.MaskedValuePatterns.Add(@"^Bearer\s+\S+$");
+            o.Template = "{Message}";
+        });
+
+        await Assert.That(output).Contains("***");
+        await Assert.That(output).DoesNotContain("secret-suffix");
+    }
+
+    [Test]
+    public async Task Exception_masking_does_not_wrap_at_fixed_scan_width()
+    {
+        const string Secret = "secret-value";
+        var message = new string('x', 999_990) + Secret;
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            logger.LogError(new InvalidOperationException(message), "failure");
+        }, o =>
+        {
+            o.MaskedValuePatterns.Clear();
+            o.MaskedValuePatterns.Add(Secret);
+            o.Template = "{Message}";
+        });
+
+        await Assert.That(output).Contains("***");
+        await Assert.That(output).DoesNotContain(Secret);
     }
 }

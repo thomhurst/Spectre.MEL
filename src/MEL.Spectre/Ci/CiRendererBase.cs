@@ -178,7 +178,8 @@ internal abstract class CiRendererBase : ICiRenderer
         }
 
         var exceptions = EnumerateExceptions(exception).ToArray();
-        var terminalValues = GetTerminalValues(exceptions, exception.ToString());
+        var rawExceptionText = exception.ToString();
+        var terminalValues = GetTerminalValues(exceptions, rawExceptionText);
         if (terminalValues.Any(ContainsUnsafeTerminalControl))
         {
             for (var i = 0; i < terminalValues.Count; i++)
@@ -186,10 +187,7 @@ internal abstract class CiRendererBase : ICiRenderer
                 CollectTerminalVisibleMaskValues(terminalValues[i], maskValues);
             }
 
-            var redactedException = SecretMasker.Mask(exception);
-            return RuntimeFeature.IsDynamicCodeSupported
-                ? redactedException + Environment.NewLine
-                : redactedException;
+            return RedactException(exception);
         }
         var normalizedMessages = exceptions
             .Select(current => PlaceholderFormatter.NormalizeForMasking(current.Message, normalizeLineEndings: true))
@@ -197,12 +195,15 @@ internal abstract class CiRendererBase : ICiRenderer
         string exceptionText;
         if (RuntimeFeature.IsDynamicCodeSupported)
         {
+            var renderWidth = (int)Math.Min(
+                int.MaxValue,
+                (long)rawExceptionText.Length + ExceptionMaskingRenderWidth);
             var renderOptions = RenderOptions.Create(console) with
             {
-                ConsoleSize = new Size(ExceptionMaskingRenderWidth, console.Profile.Height),
+                ConsoleSize = new Size(renderWidth, console.Profile.Height),
             };
             var builder = new StringBuilder();
-            foreach (var segment in exception.GetRenderable(_context.ExceptionFormats).Render(renderOptions, ExceptionMaskingRenderWidth))
+            foreach (var segment in exception.GetRenderable(_context.ExceptionFormats).Render(renderOptions, renderWidth))
             {
                 builder.Append(segment.Text);
             }
@@ -220,18 +221,15 @@ internal abstract class CiRendererBase : ICiRenderer
             return null;
         }
 
-        var maskedException = normalizedExceptionText;
-        var found = false;
-
-        for (var i = 0; i < exceptions.Length; i++)
+        var maskedException = MaskExceptionMessages(
+            normalizedExceptionText,
+            normalizedMessages,
+            maskValues,
+            out var found,
+            out var requiresRedaction);
+        if (requiresRedaction)
         {
-            if (_context.Masker.TryMaskValuePatterns(normalizedMessages[i], maskValues, out var maskedMessage))
-            {
-                maskedException = normalizedMessages[i].Length == 0
-                    ? maskedMessage
-                    : maskedException.Replace(normalizedMessages[i], maskedMessage, StringComparison.Ordinal);
-                found = true;
-            }
+            return RedactException(exception);
         }
 
         if (_context.Masker.TryMaskValuePatterns(maskedException, maskValues, out var renderedMaskedException))
@@ -241,6 +239,120 @@ internal abstract class CiRendererBase : ICiRenderer
         }
 
         return found ? maskedException : null;
+    }
+
+    private string MaskExceptionMessages(
+        string exceptionText,
+        string[] messages,
+        List<string> maskValues,
+        out bool found,
+        out bool requiresRedaction)
+    {
+        var ranges = new List<ExceptionMaskRange>();
+        requiresRedaction = false;
+
+        for (var i = 0; i < messages.Length; i++)
+        {
+            var message = messages[i];
+            var matchedValues = new List<string>();
+            if (!_context.Masker.TryMaskValuePatterns(message, matchedValues, out _))
+            {
+                continue;
+            }
+
+            maskValues.AddRange(matchedValues);
+            if (message.Length == 0)
+            {
+                requiresRedaction = true;
+                found = false;
+                return exceptionText;
+            }
+
+            var occurrence = 0;
+            var mappedMessage = false;
+            while ((occurrence = exceptionText.IndexOf(message, occurrence, StringComparison.Ordinal)) >= 0)
+            {
+                mappedMessage = true;
+                AddMessageMaskRanges(message, occurrence, matchedValues, ranges);
+                occurrence += message.Length;
+            }
+
+            if (!mappedMessage)
+            {
+                requiresRedaction = true;
+                found = false;
+                return exceptionText;
+            }
+        }
+
+        found = ranges.Count > 0;
+        if (!found)
+        {
+            return exceptionText;
+        }
+
+        ranges.Sort(static (left, right) =>
+        {
+            var byStart = left.Start.CompareTo(right.Start);
+            return byStart != 0 ? byStart : right.End.CompareTo(left.End);
+        });
+
+        var builder = new StringBuilder(exceptionText.Length);
+        var copiedLength = 0;
+        var hasMaskedRange = false;
+        for (var i = 0; i < ranges.Count; i++)
+        {
+            var range = ranges[i];
+            if (range.End <= copiedLength)
+            {
+                continue;
+            }
+            if (hasMaskedRange && range.Start <= copiedLength)
+            {
+                copiedLength = range.End;
+                continue;
+            }
+
+            builder.Append(exceptionText, copiedLength, range.Start - copiedLength);
+            builder.Append("***");
+            copiedLength = range.End;
+            hasMaskedRange = true;
+        }
+        builder.Append(exceptionText, copiedLength, exceptionText.Length - copiedLength);
+        return builder.ToString();
+    }
+
+    private static void AddMessageMaskRanges(
+        string message,
+        int messageOffset,
+        List<string> matchedValues,
+        List<ExceptionMaskRange> ranges)
+    {
+        for (var i = 0; i < matchedValues.Count; i++)
+        {
+            var matchedValue = matchedValues[i];
+            if (matchedValue.Length == 0)
+            {
+                continue;
+            }
+
+            var occurrence = 0;
+            while ((occurrence = message.IndexOf(matchedValue, occurrence, StringComparison.Ordinal)) >= 0)
+            {
+                ranges.Add(new ExceptionMaskRange(
+                    messageOffset + occurrence,
+                    messageOffset + occurrence + matchedValue.Length));
+                occurrence += matchedValue.Length;
+            }
+        }
+    }
+
+    private static string RedactException(Exception exception)
+    {
+        var redactedException = SecretMasker.Mask(exception);
+        return RuntimeFeature.IsDynamicCodeSupported
+            ? redactedException + Environment.NewLine
+            : redactedException;
     }
 
     private static List<string> GetTerminalValues(Exception[] exceptions, string rawExceptionText)
@@ -304,13 +416,24 @@ internal abstract class CiRendererBase : ICiRenderer
             }
             if (TryReadCsi(value, ref i, out var parameter, out var command))
             {
-                cursor = command switch
+                if (command == 'P')
                 {
-                    'C' or 'a' => (int)Math.Min(value.Length, (long)cursor + parameter),
-                    'D' => Math.Max(0, cursor - parameter),
-                    'G' or '`' => Math.Min(value.Length, parameter) - 1,
-                    _ => cursor,
-                };
+                    var deleteCount = Math.Min(parameter, Math.Max(0, line.Length - cursor));
+                    if (deleteCount > 0)
+                    {
+                        line.Remove(cursor, deleteCount);
+                    }
+                }
+                else
+                {
+                    cursor = command switch
+                    {
+                        'C' or 'a' => (int)Math.Min(value.Length, (long)cursor + parameter),
+                        'D' => Math.Max(0, cursor - parameter),
+                        'G' or '`' => Math.Min(value.Length, parameter) - 1,
+                        _ => cursor,
+                    };
+                }
                 continue;
             }
             if (char.IsControl(current) && current != '\t')
@@ -445,6 +568,8 @@ internal abstract class CiRendererBase : ICiRenderer
         }
         return false;
     }
+
+    private readonly record struct ExceptionMaskRange(int Start, int End);
 
     private static IEnumerable<Exception> EnumerateExceptions(Exception root)
     {
