@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -237,6 +238,24 @@ public class OutputImprovementsTests
     }
 
     [Test]
+    public async Task WriteJsonPanel_uses_provided_type_info_for_null_payload()
+    {
+        var captured = new TestConsole();
+        captured.Profile.Width = 200;
+        var options = new JsonSerializerOptions
+        {
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+        };
+        options.Converters.Add(new NullStringConverter());
+        var typeInfo = (JsonTypeInfo<string>)options.GetTypeInfo(typeof(string));
+        string payload = null!;
+
+        captured.WriteJsonPanel("Null", payload, typeInfo, CiMode.Off);
+
+        await Assert.That(captured.Output).Contains("custom-null");
+    }
+
+    [Test]
     public async Task MaskedValuePatterns_masks_secret_in_innocuously_named_placeholder()
     {
         var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
@@ -311,5 +330,16 @@ public class OutputImprovementsTests
         }
 
         return (console.Output, console.Profile.Width);
+    }
+
+    private sealed class NullStringConverter : JsonConverter<string>
+    {
+        public override bool HandleNull => true;
+
+        public override string? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            reader.GetString();
+
+        public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options) =>
+            writer.WriteStringValue(value ?? "custom-null");
     }
 }

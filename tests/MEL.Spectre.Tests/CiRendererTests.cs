@@ -33,6 +33,19 @@ public class CiRendererTests
     }
 
     [Test]
+    public async Task Aot_exception_fallback_preserves_inner_exception_without_stacks()
+    {
+        var inner = new ArgumentException("root cause");
+        var exception = new InvalidOperationException("wrapper", inner);
+
+        var text = CiRendererBase.FormatExceptionForAot(exception, ExceptionFormats.NoStackTrace);
+
+        await Assert.That(text).Contains("InvalidOperationException: wrapper");
+        await Assert.That(text).Contains("ArgumentException: root cause");
+        await Assert.That(text).DoesNotContain(" at ");
+    }
+
+    [Test]
     public async Task AzurePipelines_emits_group_endgroup_markers()
     {
         var output = await LogTestHarness.CaptureAsync(CiMode.AzurePipelines, logger =>

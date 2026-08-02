@@ -44,9 +44,7 @@ public static class AnsiConsoleJsonExtensions
         ArgumentNullException.ThrowIfNull(title);
         ArgumentNullException.ThrowIfNull(jsonTypeInfo);
 
-        var json = payload is null
-            ? "null"
-            : JsonSerializer.Serialize(payload, jsonTypeInfo);
+        var json = JsonSerializer.Serialize(payload, jsonTypeInfo);
         WriteJsonPanelCore(console, title, json, ciMode);
     }
 

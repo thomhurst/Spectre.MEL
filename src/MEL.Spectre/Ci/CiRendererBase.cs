@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text;
 using Microsoft.Extensions.Logging;
 using Spectre.Console;
 using MEL.Spectre.Masking;
@@ -101,7 +102,25 @@ internal abstract class CiRendererBase : ICiRenderer
             return exception.ToString();
         }
 
+        var builder = new StringBuilder();
+        AppendExceptionWithoutStack(builder, exception);
+        return builder.ToString();
+    }
+
+    private static void AppendExceptionWithoutStack(StringBuilder builder, Exception exception)
+    {
+        if (builder.Length > 0)
+        {
+            builder.AppendLine();
+            builder.Append(" ---> ");
+        }
+
         var typeName = exception.GetType().FullName ?? exception.GetType().Name;
-        return string.Concat(typeName, ": ", exception.Message);
+        builder.Append(typeName).Append(": ").Append(exception.Message);
+
+        if (exception.InnerException is not null)
+        {
+            AppendExceptionWithoutStack(builder, exception.InnerException);
+        }
     }
 }
