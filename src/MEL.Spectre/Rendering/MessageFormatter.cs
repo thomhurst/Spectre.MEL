@@ -33,7 +33,7 @@ internal static class MessageFormatter
                 if (i + 1 < originalFormat.Length && originalFormat[i + 1] == '{')
                 {
                     ansi.BeforeAppend(builder);
-                    builder.Append("{{");
+                    builder.Append('{');
                     i += 2;
                     continue;
                 }
@@ -93,7 +93,7 @@ internal static class MessageFormatter
                 ansi.BeforeAppend(builder);
                 if (i + 1 < originalFormat.Length && originalFormat[i + 1] == '}')
                 {
-                    builder.Append("}}");
+                    builder.Append('}');
                     i += 2;
                     continue;
                 }
