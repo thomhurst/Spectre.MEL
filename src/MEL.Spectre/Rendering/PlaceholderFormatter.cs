@@ -56,8 +56,13 @@ internal static class PlaceholderFormatter
         return ($"[{style.ToMarkup()}]{safe}[/]", null, false);
     }
 
-    internal static string NormalizeForMasking(string text) =>
-        AnsiSanitizer.ContainsAnsi(text)
+    internal static string NormalizeForMasking(string text, bool normalizeLineEndings = false)
+    {
+        var normalized = AnsiSanitizer.ContainsAnsi(text)
             ? AnsiSanitizer.EscapeAndSanitize(text, EmbeddedAnsiMode.Strip, escapeMarkup: false)
             : text;
+        return normalizeLineEndings && normalized.Contains('\r')
+            ? normalized.ReplaceLineEndings("\n")
+            : normalized;
+    }
 }

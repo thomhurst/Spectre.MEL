@@ -402,6 +402,24 @@ public class OutputImprovementsTests
     }
 
     [Test]
+    public async Task Anchored_value_pattern_masks_CRLF_exception_message()
+    {
+        const string Secret = "Bearer\r\ncredential-value";
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            logger.LogError(new InvalidOperationException(Secret), "operation failed");
+        }, o =>
+        {
+            o.MaskedValuePatterns.Clear();
+            o.MaskedValuePatterns.Add(@"^Bearer\s+\S+$");
+            o.Template = "{Message}";
+        });
+
+        await Assert.That(output).Contains("***");
+        await Assert.That(output).DoesNotContain("credential-value");
+    }
+
+    [Test]
     public async Task Anchored_value_pattern_masks_inner_exception_message()
     {
         const string Secret = "Bearer inner.secret";

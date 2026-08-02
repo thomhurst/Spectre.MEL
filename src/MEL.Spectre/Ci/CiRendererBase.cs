@@ -178,7 +178,7 @@ internal abstract class CiRendererBase : ICiRenderer
 
         var exceptions = EnumerateExceptions(exception).ToArray();
         var normalizedMessages = exceptions
-            .Select(current => PlaceholderFormatter.NormalizeForMasking(current.Message))
+            .Select(current => PlaceholderFormatter.NormalizeForMasking(current.Message, normalizeLineEndings: true))
             .ToArray();
         string exceptionText;
         if (RuntimeFeature.IsDynamicCodeSupported)
@@ -198,7 +198,7 @@ internal abstract class CiRendererBase : ICiRenderer
         {
             exceptionText = FormatExceptionForAot(exception, _context.ExceptionFormats);
         }
-        var normalizedExceptionText = PlaceholderFormatter.NormalizeForMasking(exceptionText);
+        var normalizedExceptionText = PlaceholderFormatter.NormalizeForMasking(exceptionText, normalizeLineEndings: true);
 
         if (!_context.Masker.ShouldMaskValue(normalizedExceptionText)
             && !normalizedMessages.Any(_context.Masker.ShouldMaskValue))
