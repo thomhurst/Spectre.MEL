@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Microsoft.Extensions.Logging;
@@ -177,8 +178,14 @@ internal abstract class CiRendererBase : ICiRenderer
         }
 
         var exceptions = EnumerateExceptions(exception).ToArray();
-        if (exceptions.Any(current => ContainsBareCarriageReturn(current.Message) || ContainsNonSgrAnsi(current.Message)))
+        var terminalValues = GetTerminalValues(exceptions, exception.ToString());
+        if (terminalValues.Any(ContainsUnsafeTerminalControl))
         {
+            for (var i = 0; i < terminalValues.Count; i++)
+            {
+                CollectTerminalVisibleMaskValues(terminalValues[i], maskValues);
+            }
+
             var redactedException = SecretMasker.Mask(exception);
             return RuntimeFeature.IsDynamicCodeSupported
                 ? redactedException + Environment.NewLine
@@ -234,6 +241,153 @@ internal abstract class CiRendererBase : ICiRenderer
         }
 
         return found ? maskedException : null;
+    }
+
+    private static List<string> GetTerminalValues(Exception[] exceptions, string rawExceptionText)
+    {
+        var values = new List<string> { rawExceptionText };
+        for (var i = 0; i < exceptions.Length; i++)
+        {
+            var exception = exceptions[i];
+            values.Add(exception.Message);
+            if (exception.StackTrace is { } stackTrace)
+            {
+                values.Add(stackTrace);
+            }
+
+            var frames = new StackTrace(exception, fNeedFileInfo: true).GetFrames();
+            for (var frameIndex = 0; frameIndex < frames.Length; frameIndex++)
+            {
+                if (frames[frameIndex].GetFileName() is { } fileName)
+                {
+                    values.Add(fileName);
+                }
+            }
+        }
+        return values;
+    }
+
+    private void CollectTerminalVisibleMaskValues(string value, List<string> maskValues)
+    {
+        var terminalText = ReplayTerminalText(value);
+        _context.Masker.TryMaskValuePatterns(terminalText, maskValues, out _);
+    }
+
+    private static bool ContainsUnsafeTerminalControl(string value) =>
+        ContainsBareCarriageReturn(value) || ContainsNonSgrAnsi(value);
+
+    private static string ReplayTerminalText(string value)
+    {
+        var output = new StringBuilder(value.Length);
+        var line = new StringBuilder();
+        var cursor = 0;
+
+        for (var i = 0; i < value.Length; i++)
+        {
+            var current = value[i];
+            if (current == '\n')
+            {
+                output.Append(line).Append('\n');
+                line.Clear();
+                cursor = 0;
+                continue;
+            }
+            if (current == '\r')
+            {
+                cursor = 0;
+                continue;
+            }
+            if (current == '\b')
+            {
+                cursor = Math.Max(0, cursor - 1);
+                continue;
+            }
+            if (TryReadCsi(value, ref i, out var parameter, out var command))
+            {
+                cursor = command switch
+                {
+                    'C' or 'a' => (int)Math.Min(value.Length, (long)cursor + parameter),
+                    'D' => Math.Max(0, cursor - parameter),
+                    'G' or '`' => Math.Min(value.Length, parameter) - 1,
+                    _ => cursor,
+                };
+                continue;
+            }
+            if (char.IsControl(current) && current != '\t')
+            {
+                continue;
+            }
+
+            while (line.Length < cursor)
+            {
+                line.Append(' ');
+            }
+            if (cursor < line.Length)
+            {
+                line[cursor] = current;
+            }
+            else
+            {
+                line.Append(current);
+            }
+            cursor++;
+        }
+
+        return output.Append(line).ToString();
+    }
+
+    private static bool TryReadCsi(string value, ref int index, out int parameter, out char command)
+    {
+        var current = value[index];
+        var sequenceIndex = index;
+        if (current == AnsiSanitizer.EscapeChar)
+        {
+            if (++sequenceIndex >= value.Length || value[sequenceIndex] != '[')
+            {
+                parameter = 1;
+                command = default;
+                return false;
+            }
+            sequenceIndex++;
+        }
+        else if (current == AnsiSanitizer.CsiChar)
+        {
+            sequenceIndex++;
+        }
+        else
+        {
+            parameter = 1;
+            command = default;
+            return false;
+        }
+
+        var parameterStart = sequenceIndex;
+        while (sequenceIndex < value.Length && value[sequenceIndex] is >= '\x30' and <= '\x3f')
+        {
+            sequenceIndex++;
+        }
+        var parameterEnd = sequenceIndex;
+        while (sequenceIndex < value.Length && value[sequenceIndex] is >= '\x20' and <= '\x2f')
+        {
+            sequenceIndex++;
+        }
+        if (sequenceIndex >= value.Length || value[sequenceIndex] is not (>= '\x40' and <= '\x7e'))
+        {
+            parameter = 1;
+            command = default;
+            return false;
+        }
+
+        var parameterText = value.AsSpan(parameterStart, parameterEnd - parameterStart);
+        var separator = parameterText.IndexOf(';');
+        if (separator >= 0)
+        {
+            parameterText = parameterText[..separator];
+        }
+        parameter = int.TryParse(parameterText, out var parsed) && parsed > 0 ? parsed : 1;
+        command = value[sequenceIndex];
+        index = sequenceIndex;
+        return true;
     }
 
     private static bool ContainsBareCarriageReturn(string value)

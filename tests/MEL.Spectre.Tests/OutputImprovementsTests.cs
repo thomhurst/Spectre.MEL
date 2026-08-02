@@ -495,6 +495,55 @@ public class OutputImprovementsTests
     }
 
     [Test]
+    public async Task Cursor_control_in_stack_trace_redacts_exception()
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            try
+            {
+                ThrowFromCursorControlledFile();
+            }
+            catch (InvalidOperationException exception)
+            {
+                logger.LogError(exception, "failure");
+            }
+        }, o => o.Template = "{Message}");
+
+        await Assert.That(output).Contains("***");
+        await Assert.That(output).DoesNotContain("ghp_");
+    }
+
+    [Test]
+    public async Task Cursor_obfuscated_exception_secret_emits_add_mask_in_github_actions()
+    {
+        var secret = $"ghp_{new string('a', 36)}";
+        var obfuscatedSecret = secret.Insert(20, "X\x1b[1D");
+        var output = await LogTestHarness.CaptureAsync(CiMode.GitHubActions, logger =>
+        {
+            logger.LogError(new InvalidOperationException(obfuscatedSecret), "failure");
+        }, o => o.Template = "{Message}");
+
+        await Assert.That(output).Contains($"::add-mask::{secret}");
+        await Assert.That(output).Contains("***");
+        await Assert.That(output).DoesNotContain(obfuscatedSecret);
+    }
+
+    [Test]
+    public async Task Carriage_overwritten_exception_secret_emits_add_mask_in_github_actions()
+    {
+        var secret = $"ghp_{new string('a', 36)}";
+        var obfuscatedSecret = new string(' ', 20) + secret[20..] + "\r" + secret[..20];
+        var output = await LogTestHarness.CaptureAsync(CiMode.GitHubActions, logger =>
+        {
+            logger.LogError(new InvalidOperationException(obfuscatedSecret), "failure");
+        }, o => o.Template = "{Message}");
+
+        await Assert.That(output).Contains($"::add-mask::{secret}");
+        await Assert.That(output).Contains("***");
+        await Assert.That(output).DoesNotContain(obfuscatedSecret);
+    }
+
+    [Test]
     public async Task Anchored_value_pattern_masks_inner_exception_message()
     {
         const string Secret = "Bearer inner.secret";
@@ -580,6 +629,10 @@ public class OutputImprovementsTests
     private static string[] GetPhysicalLines(string output) =>
         output.Replace("\r\n", "\n", StringComparison.Ordinal)
             .Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+#line 1 "C:\\src\\ghp_aaaaaaaaaaaaaaaaX[1Daaaaaaaaaaaaaaaaaaaa.cs"
+    private static void ThrowFromCursorControlledFile() => throw new InvalidOperationException("operation failed");
+#line default
 
     private static async Task<(string Output, int ConsoleWidth)> CaptureAtWidthAsync(
         CiMode mode,
