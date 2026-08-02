@@ -298,6 +298,41 @@ public class OutputImprovementsTests
     }
 
     [Test]
+    public async Task MaskedValuePatterns_masks_secret_in_exception_text()
+    {
+        const string Secret = "ghp_abcd1234";
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            logger.LogError(new InvalidOperationException($"Request failed with {Secret}"), "operation failed");
+        }, o =>
+        {
+            o.MaskedValuePatterns.Add(@"ghp_\w+");
+            o.Template = "{Message}";
+        });
+
+        await Assert.That(output).Contains("Request failed with ***");
+        await Assert.That(output).DoesNotContain(Secret);
+    }
+
+    [Test]
+    public async Task Masked_exception_value_emits_add_mask_in_github_actions()
+    {
+        const string Secret = "ghp_abcd1234";
+        var output = await LogTestHarness.CaptureAsync(CiMode.GitHubActions, logger =>
+        {
+            logger.LogError(new InvalidOperationException($"Request failed with {Secret}"), "operation failed");
+        }, o =>
+        {
+            o.MaskedValuePatterns.Add(@"ghp_\w+");
+            o.Template = "{Message}";
+        });
+
+        await Assert.That(output).Contains($"::add-mask::{Secret}");
+        await Assert.That(output.Split($"::add-mask::{Secret}", StringSplitOptions.None).Length - 1).IsEqualTo(1);
+        await Assert.That(output).DoesNotContain($"Request failed with {Secret}");
+    }
+
+    [Test]
     public async Task MaskedValuePatterns_does_nothing_for_non_matching_value()
     {
         var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>

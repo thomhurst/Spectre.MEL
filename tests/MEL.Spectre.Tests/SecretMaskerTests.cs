@@ -111,6 +111,22 @@ public class SecretMaskerTests
     }
 
     [Test]
+    public async Task TryMaskValuePatterns_masks_every_match_and_collects_original_values()
+    {
+        var masker = new SecretMasker([], [@"ghp_\w+"], 256);
+        var collected = new List<string>();
+
+        var found = masker.TryMaskValuePatterns(
+            "first ghp_one then ghp_two",
+            collected,
+            out var masked);
+
+        await Assert.That(found).IsTrue();
+        await Assert.That(masked).IsEqualTo("first *** then ***");
+        await Assert.That(collected).IsEquivalentTo(["ghp_one", "ghp_two"]);
+    }
+
+    [Test]
     public async Task Respects_cache_capacity()
     {
         var masker = new SecretMasker(["(?i)password"], valueCacheCapacity: 2);

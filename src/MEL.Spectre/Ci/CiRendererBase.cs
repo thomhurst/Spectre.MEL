@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Spectre.Console;
+using Spectre.Console.Rendering;
 using MEL.Spectre.Masking;
 using MEL.Spectre.Provider;
 using MEL.Spectre.Rendering;
@@ -11,6 +12,8 @@ namespace MEL.Spectre.Ci;
 
 internal abstract class CiRendererBase : ICiRenderer
 {
+    private const int ExceptionMaskingRenderWidth = 1_000_000;
+
     private readonly RendererContext _context;
 
     protected CiRendererBase(RendererContext context)
@@ -59,6 +62,7 @@ internal abstract class CiRendererBase : ICiRenderer
         {
             ValidateMarkup(renderedMarkup);
         }
+        var maskedException = MaskException(entry.Exception, console, maskValues);
 
         if (Capabilities.SupportsMasking)
         {
@@ -83,7 +87,11 @@ internal abstract class CiRendererBase : ICiRenderer
 
         if (entry.Exception is not null)
         {
-            if (RuntimeFeature.IsDynamicCodeSupported)
+            if (maskedException is not null)
+            {
+                console.Write(new Text(maskedException));
+            }
+            else if (RuntimeFeature.IsDynamicCodeSupported)
             {
                 console.WriteException(entry.Exception, _context.ExceptionFormats);
             }
@@ -151,5 +159,30 @@ internal abstract class CiRendererBase : ICiRenderer
         {
             throw new MalformedMarkupException(ex);
         }
+    }
+
+    private string? MaskException(Exception? exception, IAnsiConsole console, List<string> maskValues)
+    {
+        if (exception is null
+            || !_context.Masker.HasValuePatterns
+            || !_context.Masker.ShouldMaskValue(exception.ToString()))
+        {
+            return null;
+        }
+
+        var renderOptions = RenderOptions.Create(console) with
+        {
+            ConsoleSize = new Size(ExceptionMaskingRenderWidth, console.Profile.Height),
+        };
+        var builder = new StringBuilder();
+        foreach (var segment in exception.GetRenderable(_context.ExceptionFormats).Render(renderOptions, ExceptionMaskingRenderWidth))
+        {
+            builder.Append(segment.Text);
+        }
+
+        var exceptionText = builder.ToString();
+        return _context.Masker.TryMaskValuePatterns(exceptionText, maskValues, out var maskedException)
+            ? maskedException
+            : null;
     }
 }

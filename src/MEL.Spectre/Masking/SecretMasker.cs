@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace MEL.Spectre.Masking;
@@ -43,6 +44,36 @@ internal sealed class SecretMasker
             }
         }
         return false;
+    }
+
+    public bool TryMaskValuePatterns(string value, List<string> maskValueSink, out string maskedValue)
+    {
+        maskedValue = value;
+        var found = false;
+
+        for (var patternIndex = 0; patternIndex < _valuePatterns.Length; patternIndex++)
+        {
+            var matches = _valuePatterns[patternIndex].Matches(maskedValue);
+            if (matches.Count == 0)
+            {
+                continue;
+            }
+
+            var builder = new StringBuilder(maskedValue.Length);
+            var position = 0;
+            foreach (Match match in matches)
+            {
+                builder.Append(maskedValue, position, match.Index - position);
+                builder.Append(MaskedToken);
+                maskValueSink.Add(match.Value);
+                position = match.Index + match.Length;
+            }
+            builder.Append(maskedValue, position, maskedValue.Length - position);
+            maskedValue = builder.ToString();
+            found = true;
+        }
+
+        return found;
     }
 
     private bool MatchNamePatterns(string name)
