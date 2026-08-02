@@ -50,11 +50,23 @@ internal sealed class SecretMasker
     {
         maskedValue = value;
         var ranges = new List<MaskRange>();
+        var sinkStart = maskValueSink.Count;
 
         for (var patternIndex = 0; patternIndex < _valuePatterns.Length; patternIndex++)
         {
             foreach (Match match in _valuePatterns[patternIndex].Matches(value))
             {
+                if (match.Length == 0)
+                {
+                    maskValueSink.RemoveRange(sinkStart, maskValueSink.Count - sinkStart);
+                    if (value.Length > 0)
+                    {
+                        maskValueSink.Add(value);
+                    }
+                    maskedValue = MaskedToken;
+                    return true;
+                }
+
                 ranges.Add(new MaskRange(match.Index, match.Index + match.Length));
                 maskValueSink.Add(match.Value);
             }

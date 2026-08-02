@@ -140,6 +140,19 @@ public class SecretMaskerTests
     }
 
     [Test]
+    public async Task TryMaskValuePatterns_redacts_entire_value_for_zero_width_match()
+    {
+        var masker = new SecretMasker([], [@"(?=Bearer\s+\S+)"], 256);
+        var collected = new List<string>();
+
+        var found = masker.TryMaskValuePatterns("Bearer abc.def", collected, out var masked);
+
+        await Assert.That(found).IsTrue();
+        await Assert.That(masked).IsEqualTo("***");
+        await Assert.That(collected).IsEquivalentTo(["Bearer abc.def"]);
+    }
+
+    [Test]
     public async Task Respects_cache_capacity()
     {
         var masker = new SecretMasker(["(?i)password"], valueCacheCapacity: 2);

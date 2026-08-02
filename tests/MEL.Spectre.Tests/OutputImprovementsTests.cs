@@ -370,6 +370,24 @@ public class OutputImprovementsTests
     }
 
     [Test]
+    public async Task Zero_width_value_pattern_masks_exception_message()
+    {
+        const string Secret = "Bearer zero.width";
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            logger.LogError(new InvalidOperationException(Secret), "failure");
+        }, o =>
+        {
+            o.MaskedValuePatterns.Clear();
+            o.MaskedValuePatterns.Add(@"(?=Bearer\s+\S+)");
+            o.Template = "{Message}";
+        });
+
+        await Assert.That(output).Contains("***");
+        await Assert.That(output).DoesNotContain(Secret);
+    }
+
+    [Test]
     public async Task Default_value_pattern_masks_entire_private_key_in_exception()
     {
         const string PrivateKey = "-----BEGIN PRIVATE KEY-----\nYWJjZGVmZ2hpamtsbW5vcA==\n-----END PRIVATE KEY-----";
