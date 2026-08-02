@@ -177,6 +177,13 @@ internal abstract class CiRendererBase : ICiRenderer
         }
 
         var exceptions = EnumerateExceptions(exception).ToArray();
+        if (exceptions.Any(current => ContainsBareCarriageReturn(current.Message)))
+        {
+            var redactedException = SecretMasker.Mask(exception);
+            return RuntimeFeature.IsDynamicCodeSupported
+                ? redactedException + Environment.NewLine
+                : redactedException;
+        }
         var normalizedMessages = exceptions
             .Select(current => PlaceholderFormatter.NormalizeForMasking(current.Message, normalizeLineEndings: true))
             .ToArray();
@@ -220,6 +227,18 @@ internal abstract class CiRendererBase : ICiRenderer
         }
 
         return found ? maskedException : null;
+    }
+
+    private static bool ContainsBareCarriageReturn(string value)
+    {
+        for (var i = 0; i < value.Length; i++)
+        {
+            if (value[i] == '\r' && (i + 1 == value.Length || value[i + 1] != '\n'))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static IEnumerable<Exception> EnumerateExceptions(Exception root)

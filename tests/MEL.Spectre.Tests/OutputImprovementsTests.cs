@@ -434,6 +434,20 @@ public class OutputImprovementsTests
     }
 
     [Test]
+    public async Task Bare_carriage_return_redacts_exception()
+    {
+        var secret = $"ghp_{new string('a', 36)}";
+        var overwriteMessage = secret[27..] + "\r" + secret[..27];
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            logger.LogError(new InvalidOperationException(overwriteMessage), "operation failed");
+        }, o => o.Template = "{Message}");
+
+        await Assert.That(output).Contains("***");
+        await Assert.That(output).DoesNotContain("ghp_");
+    }
+
+    [Test]
     public async Task Anchored_value_pattern_masks_inner_exception_message()
     {
         const string Secret = "Bearer inner.secret";
