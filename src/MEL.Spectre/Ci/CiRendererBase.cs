@@ -89,7 +89,14 @@ internal abstract class CiRendererBase : ICiRenderer
         {
             if (maskedException is not null)
             {
-                console.Write(new Text(maskedException));
+                if (RuntimeFeature.IsDynamicCodeSupported)
+                {
+                    console.Write(new Text(maskedException));
+                }
+                else
+                {
+                    console.WriteLine(maskedException);
+                }
             }
             else if (RuntimeFeature.IsDynamicCodeSupported)
             {
