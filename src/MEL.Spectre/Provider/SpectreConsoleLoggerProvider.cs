@@ -54,6 +54,12 @@ internal sealed class SpectreConsoleLoggerProvider : ILoggerProvider, ISupportEx
 
     internal Task FlushAsync(CancellationToken cancellationToken) => _writer.FlushAsync(cancellationToken);
 
+    internal bool TryAcquireRenderGate(TimeSpan timeout, out IDisposable? gate) =>
+        _writer.TryAcquireRenderGate(timeout, out gate);
+
+    internal ValueTask<IDisposable?> TryAcquireRenderGateAsync(TimeSpan timeout, CancellationToken cancellationToken) =>
+        _writer.TryAcquireRenderGateAsync(timeout, cancellationToken);
+
     public ILogger CreateLogger(string categoryName)
     {
         return _loggers.GetOrAdd(categoryName, name =>

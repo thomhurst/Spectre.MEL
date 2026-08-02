@@ -13,6 +13,7 @@ internal sealed class BackgroundWriter : ILogEntryWriter
     private readonly TimeSpan _enqueueWaitTimeout;
     private readonly Task _consumerTask;
     private readonly SequenceCompletionTracker _completionTracker = new();
+    private readonly RenderGate _renderGate = new();
     private long _droppedAfterDispose;
     private long _droppedBackpressure;
     private long _droppedChannelFault;
@@ -91,6 +92,12 @@ internal sealed class BackgroundWriter : ILogEntryWriter
 
     public Task FlushAsync(CancellationToken cancellationToken) => _completionTracker.FlushAsync(cancellationToken);
 
+    public bool TryAcquireRenderGate(TimeSpan timeout, out IDisposable? gate) =>
+        _renderGate.TryAcquire(timeout, out gate);
+
+    public ValueTask<IDisposable?> TryAcquireRenderGateAsync(TimeSpan timeout, CancellationToken cancellationToken) =>
+        _renderGate.TryAcquireAsync(timeout, cancellationToken);
+
     private void WaitToWrite(QueuedEntry entry)
     {
         var deadline = _enqueueWaitTimeout > TimeSpan.Zero
@@ -152,6 +159,7 @@ internal sealed class BackgroundWriter : ILogEntryWriter
         {
             await foreach (var queued in _channel.Reader.ReadAllAsync().ConfigureAwait(false))
             {
+                _renderGate.Enter();
                 try
                 {
                     lock (SynchronizationLock)
@@ -161,6 +169,7 @@ internal sealed class BackgroundWriter : ILogEntryWriter
                 }
                 finally
                 {
+                    _renderGate.Exit();
                     _completionTracker.Complete(queued.Sequence);
                 }
             }
@@ -177,9 +186,17 @@ internal sealed class BackgroundWriter : ILogEntryWriter
                 _completionTracker.Complete(queued.Sequence);
             }
 
-            lock (SynchronizationLock)
+            _renderGate.Enter();
+            try
             {
-                _entryRenderer.CloseAllScopes();
+                lock (SynchronizationLock)
+                {
+                    _entryRenderer.CloseAllScopes();
+                }
+            }
+            finally
+            {
+                _renderGate.Exit();
             }
         }
     }
@@ -238,15 +255,21 @@ internal sealed class BackgroundWriter : ILogEntryWriter
 
             _completionTracker.Fail(timeout);
 
-            if (Monitor.TryEnter(SynchronizationLock))
+            if (_renderGate.TryAcquire(TimeSpan.Zero, out var gate))
             {
-                try
+                using (gate)
                 {
-                    _entryRenderer.CloseAllScopes();
-                }
-                finally
-                {
-                    Monitor.Exit(SynchronizationLock);
+                    if (Monitor.TryEnter(SynchronizationLock))
+                    {
+                        try
+                        {
+                            _entryRenderer.CloseAllScopes();
+                        }
+                        finally
+                        {
+                            Monitor.Exit(SynchronizationLock);
+                        }
+                    }
                 }
             }
         }
