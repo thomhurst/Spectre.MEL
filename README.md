@@ -103,6 +103,21 @@ Built-in themes: `Default`, `Dark`, `Light`, `Monochrome`.
 > fail validation at host startup via `IValidateOptions<SpectreConsoleLoggerOptions>`
 > (chained with `.ValidateOnStart()`).
 
+## Trusted message markup
+
+Use `LogMarkup` to enable Spectre markup for one trusted event while ordinary
+messages keep treating brackets as literal text:
+
+```csharp
+logger.LogMarkup("[green]Deployment succeeded[/]");
+logger.LogMarkup(LogLevel.Warning, "[yellow]Deployment delayed[/]");
+```
+
+`LogMarkup(string)` logs at `Information`; overloads accept a level or the full
+level/event/exception tuple. Escape any untrusted values with `Markup.Escape`
+before composing them into trusted markup. The global
+`AllowMarkupInMessageTemplate` option remains available for compatibility.
+
 ## CI detection
 
 ```csharp

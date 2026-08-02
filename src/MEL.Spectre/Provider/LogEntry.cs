@@ -11,6 +11,7 @@ internal sealed record LogEntry
     public EventId EventId { get; init; }
     public required string Message { get; init; }
     public string? OriginalFormat { get; init; }
+    public bool AllowMarkup { get; init; }
     public Exception? Exception { get; init; }
     public Placeholder[] Placeholders { get; init; } = [];
     public ScopeFrame[] Scopes { get; init; } = [];
