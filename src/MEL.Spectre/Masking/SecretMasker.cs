@@ -140,12 +140,17 @@ internal sealed class SecretMasker
     internal List<MaskRange> GetValuePatternMaskRanges(string value, List<string>? matchedValues = null)
     {
         var ranges = new List<MaskRange>();
+        var matchedValueStart = matchedValues?.Count ?? 0;
         for (var patternIndex = 0; patternIndex < _valuePatterns.Length; patternIndex++)
         {
             try
             {
                 foreach (Match match in _valuePatterns[patternIndex].Matches(value))
                 {
+                    if (match.Length == 0)
+                    {
+                        return MaskWholeValue(value, ranges, matchedValues, matchedValueStart);
+                    }
                     ranges.Add(new MaskRange(match.Index, match.Index + match.Length));
                     matchedValues?.Add(match.Value);
                 }
@@ -154,10 +159,7 @@ internal sealed class SecretMasker
             {
                 // A timeout is an unknown result: fail closed instead of emitting a value that may
                 // contain a match the regex engine did not reach.
-                ranges.Clear();
-                ranges.Add(new MaskRange(0, value.Length));
-                matchedValues?.Add(value);
-                return ranges;
+                return MaskWholeValue(value, ranges, matchedValues, matchedValueStart);
             }
         }
 
@@ -189,6 +191,25 @@ internal sealed class SecretMasker
             ranges[++writeIndex] = current;
         }
         ranges.RemoveRange(writeIndex + 1, ranges.Count - writeIndex - 1);
+        return ranges;
+    }
+
+    private static List<MaskRange> MaskWholeValue(
+        string value,
+        List<MaskRange> ranges,
+        List<string>? matchedValues,
+        int matchedValueStart)
+    {
+        ranges.Clear();
+        ranges.Add(new MaskRange(0, value.Length));
+        if (matchedValues is not null)
+        {
+            matchedValues.RemoveRange(matchedValueStart, matchedValues.Count - matchedValueStart);
+            if (value.Length > 0)
+            {
+                matchedValues.Add(value);
+            }
+        }
         return ranges;
     }
 

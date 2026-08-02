@@ -134,6 +134,16 @@ public class MessageFormatterTests
     }
 
     [Test]
+    public async Task Zero_length_value_pattern_masks_the_whole_literal_message()
+    {
+        var masker = new SecretMasker([], [@"(?=secret-\w+)"], 256);
+
+        var result = MessageFormatter.Render(null, "prefix secret-value suffix", [], SpectreTheme.Monochrome, masker);
+
+        await Assert.That(result).IsEqualTo("***");
+    }
+
+    [Test]
     public async Task Value_pattern_scanning_masks_link_target_attributes()
     {
         var masker = new SecretMasker([], [@"secret-\w+"], 256);
@@ -150,6 +160,25 @@ public class MessageFormatterTests
 
         await Assert.That(result).IsEqualTo("[link=https://host/***]click[/]");
         await Assert.That(collected).Contains("secret-value");
+    }
+
+    [Test]
+    public async Task Zero_length_value_pattern_masks_the_whole_link_target()
+    {
+        var masker = new SecretMasker([], [@"(?=secret-\w+)"], 256);
+        var collected = new List<string>();
+
+        var result = MessageFormatter.Render(
+            "[link=https://host/secret-value]click[/]",
+            "fallback",
+            [],
+            SpectreTheme.Monochrome,
+            masker,
+            collected,
+            allowMarkupInTemplate: true);
+
+        await Assert.That(result).IsEqualTo("[link=***]click[/]");
+        await Assert.That(collected).IsEquivalentTo(["https://host/secret-value"]);
     }
 
     [Test]

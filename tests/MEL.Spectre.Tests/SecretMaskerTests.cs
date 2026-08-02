@@ -170,6 +170,19 @@ public class SecretMaskerTests
         await Assert.That(masker.MaskValuePatterns(value)).IsEqualTo("***");
     }
 
+    [Test]
+    public async Task Zero_length_value_pattern_masks_and_registers_the_whole_value()
+    {
+        const string Value = "prefix secret-value suffix";
+        var masker = new SecretMasker([], [@"(?=secret-\w+)"], 256);
+        var collected = new List<string>();
+
+        var result = masker.MaskValuePatterns(Value, collected);
+
+        await Assert.That(result).IsEqualTo("***");
+        await Assert.That(collected).IsEquivalentTo([Value]);
+    }
+
     private static string RenderDefaultValue(string value) =>
         MessageFormatter.Render(
             "{Output}",
