@@ -40,7 +40,7 @@ internal sealed class SpectreConsoleLoggerProvider : ILoggerProvider, ISupportEx
             : console;
 
         _writer = _options.WriteMode == WriteMode.Synchronous
-            ? new SynchronousWriter(writerConsole, renderer)
+            ? new SynchronousWriter(writerConsole, renderer, _options.ShutdownDrainTimeout)
             : new BackgroundWriter(
                 writerConsole,
                 renderer,

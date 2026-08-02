@@ -12,14 +12,15 @@ public interface ISpectreConsoleLoggerControl
     Task FlushAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Attempts to acquire exclusive access to console rendering within <paramref name="timeout"/>.
-    /// Dispose the returned gate to release access.
+    /// Attempts to pause MEL.Spectre rendering within <paramref name="timeout"/>. While the returned lease is held,
+    /// lock <see cref="SynchronizationLock"/> around the direct write to coordinate with legacy callers.
     /// </summary>
     bool TryAcquireRenderGate(TimeSpan timeout, out IDisposable? gate);
 
     /// <summary>
-    /// Asynchronously attempts to acquire exclusive access to console rendering within <paramref name="timeout"/>.
-    /// Returns <see langword="null"/> on timeout. Dispose a returned gate to release access.
+    /// Asynchronously attempts to pause MEL.Spectre rendering within <paramref name="timeout"/>. Returns
+    /// <see langword="null"/> on timeout. While the lease is held, lock <see cref="SynchronizationLock"/> around the
+    /// direct write to coordinate with legacy callers.
     /// </summary>
     ValueTask<IDisposable?> TryAcquireRenderGateAsync(
         TimeSpan timeout,

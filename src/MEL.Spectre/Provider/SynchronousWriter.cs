@@ -8,12 +8,16 @@ internal sealed class SynchronousWriter : ILogEntryWriter
     private readonly LogEntryRenderer _entryRenderer;
     private readonly SequenceCompletionTracker _completionTracker = new();
     private readonly RenderGate _renderGate = new();
+    private readonly TimeSpan _drainTimeout;
     private OnceFlag _droppedAfterDisposeWarning;
-    private bool _disposed;
+    private OnceFlag _drainTimeoutWarning;
+    private int _disposeStarted;
+    private int _disposed;
 
-    public SynchronousWriter(IAnsiConsole console, ICiRenderer renderer)
+    public SynchronousWriter(IAnsiConsole console, ICiRenderer renderer, TimeSpan drainTimeout)
     {
         _entryRenderer = new LogEntryRenderer(console, renderer);
+        _drainTimeout = drainTimeout;
     }
 
     public object SynchronizationLock { get; } = new();
@@ -28,7 +32,7 @@ internal sealed class SynchronousWriter : ILogEntryWriter
         {
             lock (SynchronizationLock)
             {
-                if (_disposed)
+                if (Volatile.Read(ref _disposed) != 0)
                 {
                     if (_droppedAfterDisposeWarning.TrySet())
                     {
@@ -47,12 +51,8 @@ internal sealed class SynchronousWriter : ILogEntryWriter
         }
     }
 
-    public async Task FlushAsync(CancellationToken cancellationToken)
-    {
-        await _completionTracker.FlushAsync(cancellationToken).ConfigureAwait(false);
-        await _renderGate.EnterAsync(cancellationToken).ConfigureAwait(false);
-        _renderGate.Exit();
-    }
+    public Task FlushAsync(CancellationToken cancellationToken) =>
+        _completionTracker.FlushAsync(cancellationToken);
 
     public bool TryAcquireRenderGate(TimeSpan timeout, out IDisposable? gate) =>
         _renderGate.TryAcquire(timeout, out gate);
@@ -60,25 +60,31 @@ internal sealed class SynchronousWriter : ILogEntryWriter
     public ValueTask<IDisposable?> TryAcquireRenderGateAsync(TimeSpan timeout, CancellationToken cancellationToken) =>
         _renderGate.TryAcquireAsync(timeout, cancellationToken);
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        _renderGate.Enter();
-        try
+        if (Interlocked.Exchange(ref _disposeStarted, 1) != 0)
+        {
+            return;
+        }
+
+        var gate = await _renderGate.TryAcquireAsync(_drainTimeout, CancellationToken.None).ConfigureAwait(false);
+        if (gate is null)
+        {
+            Volatile.Write(ref _disposed, 1);
+            if (_drainTimeoutWarning.TrySet())
+            {
+                LogWriterDiagnostics.Emit($"MEL.Spectre: synchronous drain timeout after {_drainTimeout}; open scopes may remain.");
+            }
+            return;
+        }
+
+        using (gate)
         {
             lock (SynchronizationLock)
             {
-                if (!_disposed)
-                {
-                    _disposed = true;
-                    _entryRenderer.CloseAllScopes();
-                }
+                Volatile.Write(ref _disposed, 1);
+                _entryRenderer.CloseAllScopes();
             }
         }
-        finally
-        {
-            _renderGate.Exit();
-        }
-
-        return ValueTask.CompletedTask;
     }
 }

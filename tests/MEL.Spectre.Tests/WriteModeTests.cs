@@ -94,26 +94,74 @@ public class WriteModeTests
     }
 
     [Test]
-    public async Task Synchronous_FlushAsync_honors_cancellation_while_render_gate_is_held()
+    public async Task Synchronous_FlushAsync_completes_while_render_gate_is_held_without_pending_entries()
     {
         var console = new TestConsole { Profile = { Width = 1_000_000 } };
         var services = BuildServices(console, WriteMode.Synchronous);
         var control = services.GetRequiredService<ISpectreConsoleLoggerControl>();
         var acquired = control.TryAcquireRenderGate(TimeSpan.Zero, out var gate);
 
-        try
-        {
-            await Assert.That(acquired).IsTrue();
-            using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+        await Assert.That(acquired).IsTrue();
+        await control.FlushAsync().WaitAsync(TimeSpan.FromSeconds(1));
 
-            await Assert.That(async () => await control.FlushAsync(cancellation.Token))
-                .Throws<OperationCanceledException>();
-        }
-        finally
+        gate?.Dispose();
+        await services.DisposeAsync();
+    }
+
+    [Test]
+    public async Task Synchronous_disposal_times_out_while_render_gate_is_held()
+    {
+        var console = new TestConsole { Profile = { Width = 1_000_000 } };
+        var services = BuildServices(console, WriteMode.Synchronous, options =>
         {
-            gate?.Dispose();
-            await services.DisposeAsync();
-        }
+            options.ShutdownDrainTimeout = TimeSpan.FromMilliseconds(50);
+            options.EnqueueWaitTimeout = TimeSpan.FromMilliseconds(50);
+        });
+        var control = services.GetRequiredService<ISpectreConsoleLoggerControl>();
+        var acquired = control.TryAcquireRenderGate(TimeSpan.Zero, out var gate);
+
+        await Assert.That(acquired).IsTrue();
+        await services.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1));
+        gate?.Dispose();
+    }
+
+    [Test]
+    [Arguments(WriteMode.Background)]
+    [Arguments(WriteMode.Synchronous)]
+    public async Task Render_gate_pattern_coordinates_with_legacy_lock_callers(WriteMode writeMode)
+    {
+        var console = new TestConsole { Profile = { Width = 1_000_000 } };
+        await using var services = BuildServices(console, writeMode);
+        var control = services.GetRequiredService<ISpectreConsoleLoggerControl>();
+        using var legacyEntered = new ManualResetEventSlim();
+        using var releaseLegacy = new ManualResetEventSlim();
+        using var directWriteEntered = new ManualResetEventSlim();
+
+        var legacyWriter = Task.Run(() =>
+        {
+            lock (control.SynchronizationLock)
+            {
+                legacyEntered.Set();
+                releaseLegacy.Wait();
+            }
+        });
+        legacyEntered.Wait();
+
+        var gateWriter = Task.Run(async () =>
+        {
+            using var gate = await control.TryAcquireRenderGateAsync(TimeSpan.FromSeconds(1))
+                ?? throw new TimeoutException("Render gate was not acquired.");
+            lock (control.SynchronizationLock)
+            {
+                directWriteEntered.Set();
+            }
+        });
+
+        await Task.Delay(50);
+        await Assert.That(directWriteEntered.IsSet).IsFalse();
+        releaseLegacy.Set();
+        await Task.WhenAll(legacyWriter, gateWriter).WaitAsync(TimeSpan.FromSeconds(5));
+        await Assert.That(directWriteEntered.IsSet).IsTrue();
     }
 
     [Test]

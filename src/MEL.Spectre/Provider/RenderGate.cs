@@ -9,9 +9,6 @@ internal sealed class RenderGate
 
     public void Enter() => _semaphore.Wait();
 
-    public async ValueTask EnterAsync(CancellationToken cancellationToken) =>
-        await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-
     public void Exit() => _semaphore.Release();
 
     public bool TryAcquire(TimeSpan timeout, out IDisposable? gate)
