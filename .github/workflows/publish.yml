@@ -73,15 +73,19 @@ jobs:
       - name: Tag release
         if: ${{ inputs.push }}
         run: |
-          git tag "v${{ steps.gitversion.outputs.semVer }}"
-          git push origin "v${{ steps.gitversion.outputs.semVer }}"
+          tag="v${{ steps.gitversion.outputs.semVer }}"
+          if git rev-parse --verify "refs/tags/$tag" >/dev/null 2>&1; then
+            test "$(git rev-list -n 1 "$tag")" = "$GITHUB_SHA"
+          else
+            git tag "$tag"
+            git push origin "$tag"
+          fi
 
       - name: Create GitHub release
         if: ${{ inputs.push }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release create "v${{ steps.gitversion.outputs.semVer }}"
-          --verify-tag
-          --title "v${{ steps.gitversion.outputs.semVer }}"
-          --generate-notes
+        run: |
+          tag="v${{ steps.gitversion.outputs.semVer }}"
+          gh release view "$tag" >/dev/null 2>&1 ||
+            gh release create "$tag" --verify-tag --title "$tag" --generate-notes
