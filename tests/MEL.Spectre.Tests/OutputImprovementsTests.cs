@@ -444,6 +444,25 @@ public class OutputImprovementsTests
     }
 
     [Test]
+    public async Task Whole_message_pattern_wins_over_substring_pattern()
+    {
+        const string Secret = "Bearer secret-prefix.secret-suffix";
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            logger.LogError(new InvalidOperationException(Secret), "operation failed");
+        }, o =>
+        {
+            o.MaskedValuePatterns.Clear();
+            o.MaskedValuePatterns.Add("secret-prefix");
+            o.MaskedValuePatterns.Add(@"^Bearer\s+\S+$");
+            o.Template = "{Message}";
+        });
+
+        await Assert.That(output).Contains("***");
+        await Assert.That(output).DoesNotContain("secret-suffix");
+    }
+
+    [Test]
     public async Task Anchored_value_pattern_masks_CRLF_exception_message()
     {
         const string Secret = "Bearer\r\ncredential-value";

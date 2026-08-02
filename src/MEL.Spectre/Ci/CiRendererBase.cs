@@ -213,7 +213,8 @@ internal abstract class CiRendererBase : ICiRenderer
             return null;
         }
 
-        var found = _context.Masker.TryMaskValuePatterns(normalizedExceptionText, maskValues, out var maskedException);
+        var maskedException = normalizedExceptionText;
+        var found = false;
 
         for (var i = 0; i < exceptions.Length; i++)
         {
@@ -224,6 +225,12 @@ internal abstract class CiRendererBase : ICiRenderer
                     : maskedException.Replace(normalizedMessages[i], maskedMessage, StringComparison.Ordinal);
                 found = true;
             }
+        }
+
+        if (_context.Masker.TryMaskValuePatterns(maskedException, maskValues, out var renderedMaskedException))
+        {
+            maskedException = renderedMaskedException;
+            found = true;
         }
 
         return found ? maskedException : null;
