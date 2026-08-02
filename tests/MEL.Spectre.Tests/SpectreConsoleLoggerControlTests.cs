@@ -65,6 +65,32 @@ public class SpectreConsoleLoggerControlTests
         await Assert.That(control.WouldRender("Allowed.Child", LogLevel.None)).IsFalse();
     }
 
+    [Test]
+    public async Task Captured_child_context_resumes_after_parent_disposes_suspension()
+    {
+        var console = new TestConsole { Profile = { Width = 1_000_000 } };
+        await using var services = BuildServices(console);
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("CapturedContext");
+        var control = services.GetRequiredService<ISpectreConsoleLoggerControl>();
+        var releaseChild = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task child;
+
+        using (control.Suspend())
+        {
+            child = Task.Run(async () =>
+            {
+                await releaseChild.Task;
+                logger.LogInformation("child after suspension");
+            });
+        }
+
+        releaseChild.SetResult();
+        await child;
+        await control.FlushAsync();
+
+        await Assert.That(console.Output).Contains("child after suspension");
+    }
+
     private static ServiceProvider BuildServices(
         IAnsiConsole console,
         ILoggerProvider? additionalProvider = null,
