@@ -140,6 +140,13 @@ if (-not [string]::Equals($actualRoot, $expectedRoot, [System.StringComparison]:
 }
 ```
 
+The `pr-<N>-*` directory name is durable cleanup identity for review/rebase worktrees
+whose local branch or commit may differ from GitHub's PR head after a squash merge.
+Keep the correct PR number in the name; never rename or reuse that directory for another
+PR. Cleanup verifies GitHub has no open PR associated with the current commit before it
+trusts detached identity. Named worktrees must also use a local branch containing the
+same `pr-<N>` identity.
+
 For tool calls, prefer two separate calls for PR work: first create the worktree from the shared repo,
 then call `gh pr checkout <N>` with the tool `workdir` set to the worktree path. If `gh pr checkout` is run
 from the shared checkout by mistake and no files were modified, immediately return the shared checkout to its
@@ -157,7 +164,7 @@ git -C $repo worktree remove <worktree-path>
 
 Spectre.MEL has no Aspire AppHost. Do not run `aspire start`, `aspire stop`, or AppHost cleanup commands in this repo.
 
-Only stop processes or containers you started for the current worktree. Never blanket-delete Docker containers or volumes; the agent-lock Redis container (`spectre-mel-agent-locks-redis`) and other agents' work may be using them.
+Tests that need external services use Docker or repo scripts. Only stop processes or containers you started for the current worktree. Never blanket-delete Docker containers or volumes; another agent or local test run may be using them (the `spectre-mel-agent-locks-redis` container in particular is shared lock infrastructure — never remove it).
 
 ## Concurrent Work Locks
 
@@ -279,17 +286,21 @@ Do not rely on branch protection being present, current, or configured for every
 
 The guard enforces only the **mechanical** MERGE signals. The judgment-only signals from the MERGE row — approval (or repo-does-not-gate), zero unaddressed comments, and a bot CI cycle since your last fix push — are still yours to confirm before you run it; a passing guard is necessary, not sufficient.
 
-Merge with the single command `scripts/Merge-Pr.ps1 -Pr <n>`. It runs the gate, merges only if the gate passes, then performs best-effort cleanup of that PR's isolated worktree and head branches:
+Merge with `scripts/Merge-Pr.ps1 -Pr <n> -Worktree <path>` when you own that PR's
+worktree. The explicit path lets cleanup remove review/rebase branches whose local name
+differs from GitHub's head branch. Omit `-Worktree` only when no isolated worktree exists;
+exact-head-branch auto-discovery remains a fallback. The command runs the gate, merges
+only if the gate passes, then performs best-effort cleanup:
 
 ```powershell
-pwsh scripts/Merge-Pr.ps1 -Pr <n>
+pwsh scripts/Merge-Pr.ps1 -Pr <n> -Worktree $worktree
 if ($LASTEXITCODE -ne 0) {
   # NOT merged (gate denied or merge failed) — nothing destroyed.
   # Leave a short update, skip the PR, advance to the next iteration.
 }
 ```
 
-`Merge-Pr.ps1` internally: (1) calls the pure `Assert-PrGreen.ps1` gate (re-fetches fresh state; exits 0 only when OPEN + `MERGEABLE` + `CLEAN` + every check terminal-and-passing + no unresolved threads); (2) on exit 0, runs `gh pr merge <n> --squash` without asking `gh` to delete a branch that may still be checked out; (3) finds and removes the clean worktree by the PR's head branch; (4) only after the worktree is gone, deletes the remote and local head branches. If the worktree has uncommitted tracked changes, it and both branches are preserved. Once the merge succeeds, later cleanup failures warn and still exit 0 — never retry an already-completed merge because cleanup was incomplete. The gate remains a separate read-only predicate — do not fold merging into it; `Merge-Pr.ps1` composes it.
+`Merge-Pr.ps1` internally: (1) calls the pure `Assert-PrGreen.ps1` gate (re-fetches fresh state; exits 0 only when OPEN + `MERGEABLE` + `CLEAN` + every check terminal-and-passing + no unresolved threads); (2) validates the explicit isolated worktree, or finds the PR's exact head-branch worktree; (3) on exit 0, runs `gh pr merge <n> --squash` without asking `gh` to delete a branch that may still be checked out; (4) removes that same validated clean worktree; (5) only after the worktree is gone, deletes the remote and local head branches. If tracked changes exist, it preserves the worktree and both branches. Once the merge succeeds, later cleanup failures warn and still exit 0 — never retry an already-completed merge because cleanup was incomplete. The gate remains a separate read-only predicate — do not fold merging into it; `Merge-Pr.ps1` composes it.
 
 Hard rules — no exceptions:
 
@@ -300,7 +311,7 @@ Hard rules — no exceptions:
 
 Worktree and branch cleanup are part of `Merge-Pr.ps1`. It removes a clean merged-PR worktree before deleting its remote/local head branches. If tracked changes exist, it preserves the worktree and both branches (untracked build artifacts are cleared). Post-merge cleanup failures are warnings because the merge cannot safely be retried. You do **not** run a separate removal step after merge.
 
-**Per-iteration safety-net sweep.** Once per loop iteration, run `pwsh scripts/Remove-MergedWorktrees.ps1`. It reaps any worktree whose branch has a **merged PR** — including PRs squash-merged by another agent or a human, which `Merge-Pr.ps1` never saw. Detection is via GitHub's merged-PR head branches (`gh pr list --state merged`), the only signal that survives squash/rebase (the branch tip is not an ancestor of `main`, so ancestry checks miss it). It is squash-safe, skips branches with an open PR, skips detached worktrees, and preserves dirty worktrees. A `[gone]` branch is deliberately **not** treated as merged — that also happens to closed-unmerged PRs.
+**Per-iteration safety-net sweep.** Once per loop iteration, run `pwsh scripts/Remove-MergedWorktrees.ps1`. It reaps worktrees with a **merged PR**, including squash-merged review/rebase variants. It first uses GitHub branch, tip, and commit association. If those miss a local-only tip, a named worktree requires matching `pr-<N>` path and branch identities; a detached worktree additionally requires a successful GitHub lookup confirming the current commit has no open PR. It preserves dirty, open-PR, locked, and harness-managed worktrees. It also removes failed-cleanup remnants with dangling `.git` markers. For legacy remnants where Git already removed `.git`, deletion requires canonical root/name, a merged PR number, and no meaningful file newer than the merge. A `[gone]` branch remains insufficient evidence because closed-unmerged PRs also lose remote refs.
 
 ### Other Rules
 
@@ -429,7 +440,7 @@ Cover every journey listed. `Closes #<N>` means closes, not "starts addressing."
 1. Create and enter an isolated worktree for `issue-<N>-<short-desc>` using the worktree commands above.
 2. Use TDD: failing test first; document why if not feasible.
 3. Make the minimal implementation to pass.
-4. Run focused tests, then broader tests. Tests use TUnit: build the test project, run the produced test executable, and use `--treenode-filter` for focus. For TUnit focused runs, use one `--treenode-filter` pattern per command unless using valid TUnit OR parentheses.
+4. Run focused tests, then broader tests. Every local `dotnet` command must run through `pwsh scripts/Invoke-AgentDotNet.ps1` with the shell/tool timeout at least 30 seconds longer than the guard timeout; never invoke `dotnet` directly. Tests use TUnit on Microsoft.Testing.Platform — run via `dotnet run`, not `dotnet test`: guarded arguments equivalent to `dotnet run --project tests/MEL.Spectre.Tests/MEL.Spectre.Tests.csproj -- --treenode-filter "/**"`, and use `--treenode-filter` for focus. For TUnit focused runs, use one `--treenode-filter` pattern per command unless using valid TUnit OR parentheses. Guard exit 124 (timeout) or 137 (memory) is a local validation limit: do not raise the limit and retry automatically; report it in the PR and let CI run the expensive check.
 5. Run `/simplify` before opening any code-touching PR.
 6. Commit referencing `#<N>`.
 7. Push and open a PR with `Closes #<N>` on its own line:
@@ -476,5 +487,7 @@ This loop runs unattended. **Never ask the user a question and never wait for a 
 - Library code under `src/` must use `ConfigureAwait(false)` on awaited tasks; tests do not need it.
 - Logging hot paths are performance-sensitive: avoid introducing allocations, LINQ, closures, or boxing on the per-log-message path. Changes touching the write/render path benefit from a before/after `[MemoryDiagnoser]` benchmark (see `benchmarks/`) with numbers in the PR body.
 - `/simplify` and review feedback must never introduce allocations, LINQ, closures, virtual dispatch, or async overhead into hot paths. If a "simplification" or reviewer suggestion regresses performance, decline it in the thread with the performance rationale — performance wins over style in `src/`.
+- **Configure-once invariants (CLAUDE.md):** `SpectreTheme.Freeze()` and the `MaskedNamePatterns` snapshot make the theme and masking immutable after provider construction; mutation must throw `InvalidOperationException`. Preserve this invariant when adding options.
+- `dotnet build` is the lint — `TreatWarningsAsErrors` + `EnforceCodeStyleInBuild` + latest-recommended analyzers. Run a guarded build before committing; a warning is a CI failure.
 - Flaky tests indicate real bugs. Do not rerun CI just to get green; investigate timing, synchronization, and shared-state causes.
 - Local debugging beyond 2-3 iterations on one test: push to CI and let CI judge.

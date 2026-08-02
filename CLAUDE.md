@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 MEL.Spectre — a `Microsoft.Extensions.Logging` provider (NuGet package) that renders log entries through Spectre.Console with CI-runner awareness (GitHub Actions, Azure Pipelines, GitLab CI, TeamCity, Buildkite, Travis natively; Jenkins/CircleCI/AppVeyor via passthrough). Single library project targeting `net10.0`; SDK version pinned in `global.json`. Solution file is `MEL.Spectre.slnx`.
 
-Note: `agents.md` is a symlink to this file.
+Note: `AGENTS.md` is a symlink to this file, and `.agents/skills` is a symlink to `.claude/skills`, so non-Claude agents see the same instructions and skills.
 
 ## Commands
 
@@ -23,6 +23,8 @@ dotnet run --project tests/MEL.Spectre.Tests/MEL.Spectre.Tests.csproj -- --treen
 dotnet pack src/MEL.Spectre/MEL.Spectre.csproj --configuration Release
 dotnet run --project benchmarks/MEL.Spectre.Benchmarks -c Release
 ```
+
+> **Autonomous agents (issue-pr-loop):** run every local `dotnet` command through the guard, e.g. `pwsh scripts/Invoke-AgentDotNet.ps1 -DotNetArguments @('run', '--project', 'tests/MEL.Spectre.Tests/MEL.Spectre.Tests.csproj', '--', '--treenode-filter', '/**')` — it applies time/memory limits and below-normal priority so a runaway build cannot exhaust the workstation. Exit 124 = timeout, 137 = memory limit; report and let CI run the expensive check instead of raising limits.
 
 Package versions are managed centrally in `Directory.Packages.props` (Central Package Management) — csproj files reference packages without versions. Shared build settings live in `Directory.Build.props`.
 
