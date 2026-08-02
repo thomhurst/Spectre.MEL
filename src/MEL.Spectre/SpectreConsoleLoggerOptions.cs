@@ -117,7 +117,7 @@ public sealed class SpectreConsoleLoggerOptions
         @"(?-i:(?<![0-9A-Z])AKIA[0-9A-Z]{16}(?![0-9A-Z]))",
         @"(?-i:(?<![A-Za-z0-9-])xox[baprs]-[A-Za-z0-9-]{10,}(?![A-Za-z0-9-]))",
         @"(?-i:(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}(?![A-Za-z0-9_-]))",
-        @"(?-i:-----BEGIN [A-Z ]*PRIVATE KEY-----)",
+        @"(?s-i:-----BEGIN (?<pem>[A-Z ]*PRIVATE KEY)-----.*?(?:-----END \k<pem>-----|\z))",
     ];
 
     public IAnsiConsole? Console { get; set; }

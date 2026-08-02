@@ -157,7 +157,9 @@ rendered as `***`. On GitHub Actions, MEL.Spectre also emits `::add-mask::`
 once per distinct value so the unmasked value is redacted from subsequent
 build steps. Placeholder values also use mutable `MaskedValuePatterns`
 defaults for well-known GitHub, GitLab, AWS, Slack, JWT, and private-key
-formats; matching runs only for placeholder string values.
+formats. These patterns scan placeholder string values and rendered exception
+text; exception matches are masked before output and registered with supported
+CI runners.
 
 ```csharp
 builder.AddSpectreConsole(o =>

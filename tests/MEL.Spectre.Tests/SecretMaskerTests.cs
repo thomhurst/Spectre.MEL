@@ -111,6 +111,48 @@ public class SecretMaskerTests
     }
 
     [Test]
+    public async Task TryMaskValuePatterns_masks_every_match_and_collects_original_values()
+    {
+        var masker = new SecretMasker([], [@"ghp_\w+"], 256);
+        var collected = new List<string>();
+
+        var found = masker.TryMaskValuePatterns(
+            "first ghp_one then ghp_two",
+            collected,
+            out var masked);
+
+        await Assert.That(found).IsTrue();
+        await Assert.That(masked).IsEqualTo("first *** then ***");
+        await Assert.That(collected).IsEquivalentTo(["ghp_one", "ghp_two"]);
+    }
+
+    [Test]
+    public async Task TryMaskValuePatterns_does_not_match_synthetic_replacement_text()
+    {
+        var masker = new SecretMasker([], ["secret", @"\*\*\*"], 256);
+        var collected = new List<string>();
+
+        var found = masker.TryMaskValuePatterns("secret visible", collected, out var masked);
+
+        await Assert.That(found).IsTrue();
+        await Assert.That(masked).IsEqualTo("*** visible");
+        await Assert.That(collected).IsEquivalentTo(["secret"]);
+    }
+
+    [Test]
+    public async Task TryMaskValuePatterns_redacts_entire_value_for_zero_width_match()
+    {
+        var masker = new SecretMasker([], [@"(?=Bearer\s+\S+)"], 256);
+        var collected = new List<string>();
+
+        var found = masker.TryMaskValuePatterns("Bearer abc.def", collected, out var masked);
+
+        await Assert.That(found).IsTrue();
+        await Assert.That(masked).IsEqualTo("***");
+        await Assert.That(collected).IsEquivalentTo(["Bearer abc.def"]);
+    }
+
+    [Test]
     public async Task Respects_cache_capacity()
     {
         var masker = new SecretMasker(["(?i)password"], valueCacheCapacity: 2);

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using Spectre.Console;
 using MEL.Spectre.Masking;
 using MEL.Spectre.Provider;
@@ -56,8 +57,50 @@ internal static class PlaceholderFormatter
         return ($"[{style.ToMarkup()}]{safe}[/]", null, false);
     }
 
-    private static string NormalizeForMasking(string text) =>
-        AnsiSanitizer.ContainsAnsi(text)
-            ? AnsiSanitizer.EscapeAndSanitize(text, EmbeddedAnsiMode.Strip, escapeMarkup: false)
+    internal static string NormalizeForMasking(string text, bool normalizeLineEndings = false)
+    {
+        var normalized = AnsiSanitizer.ContainsAnsi(text)
+            ? AnsiSanitizer.EscapeAndSanitize(text, EmbeddedAnsiMode.Strip, escapeMarkup: false, stripControls: false)
             : text;
+        normalized = NormalizeTerminalControls(normalized);
+        return normalizeLineEndings && normalized.Contains('\r')
+            ? normalized.ReplaceLineEndings("\n")
+            : normalized;
+    }
+
+    private static string NormalizeTerminalControls(string text)
+    {
+        var firstControl = -1;
+        for (var i = 0; i < text.Length; i++)
+        {
+            var value = text[i];
+            if (char.IsControl(value) && value is not '\r' and not '\n' and not '\t')
+            {
+                firstControl = i;
+                break;
+            }
+        }
+        if (firstControl < 0) return text;
+
+        var builder = new StringBuilder(text.Length);
+        builder.Append(text, 0, firstControl);
+        for (var i = firstControl; i < text.Length; i++)
+        {
+            var value = text[i];
+            if (value == '\b')
+            {
+                if (builder.Length > 0 && builder[^1] is not '\r' and not '\n')
+                {
+                    builder.Length--;
+                }
+                continue;
+            }
+
+            if (!char.IsControl(value) || value is '\r' or '\n' or '\t')
+            {
+                builder.Append(value);
+            }
+        }
+        return builder.ToString();
+    }
 }
