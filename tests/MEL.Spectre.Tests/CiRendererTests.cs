@@ -315,6 +315,32 @@ public class CiRendererTests
     }
 
     [Test]
+    public async Task LogMarkup_enables_markup_for_only_that_entry()
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            logger.LogMarkup("[green]trusted[/]");
+            logger.LogInformation("[green]literal[/]");
+        }, o => o.Template = "{Message}");
+
+        await Assert.That(output).Contains("trusted");
+        await Assert.That(output).DoesNotContain("[green]trusted[/]");
+        await Assert.That(output).Contains("[green]literal[/]");
+    }
+
+    [Test]
+    public async Task LogMarkup_CI_annotation_payload_is_plain_text()
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.GitHubActions, logger =>
+        {
+            logger.LogMarkup(LogLevel.Warning, "[red]danger[/]");
+        }, o => o.Template = "{Message}");
+
+        await Assert.That(output).Contains("::warning::danger");
+        await Assert.That(output).DoesNotContain("[red]");
+    }
+
+    [Test]
     public async Task AllowMarkupInMessageTemplate_off_escapes_markup_tags()
     {
         var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>

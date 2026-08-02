@@ -2,9 +2,10 @@ namespace MEL.Spectre.Provider;
 
 internal static class StateReader
 {
-    private const string OriginalFormatKey = "{OriginalFormat}";
+    internal const string OriginalFormatKey = "{OriginalFormat}";
+    internal const string MarkupEnabledKey = "{MEL.Spectre.Markup}";
 
-    public static (string? OriginalFormat, Placeholder[] Placeholders) Extract<TState>(TState state)
+    public static (string? OriginalFormat, Placeholder[] Placeholders, bool AllowMarkup) Extract<TState>(TState state)
     {
         if (state is IReadOnlyList<KeyValuePair<string, object?>> list)
         {
@@ -16,17 +17,18 @@ internal static class StateReader
             return ExtractFromEnumerable(enumerable);
         }
 
-        return (null, []);
+        return (null, [], false);
     }
 
-    private static (string? OriginalFormat, Placeholder[] Placeholders) ExtractFromList(IReadOnlyList<KeyValuePair<string, object?>> list)
+    private static (string? OriginalFormat, Placeholder[] Placeholders, bool AllowMarkup) ExtractFromList(IReadOnlyList<KeyValuePair<string, object?>> list)
     {
         if (list.Count == 0)
         {
-            return (null, []);
+            return (null, [], false);
         }
 
         string? originalFormat = null;
+        var allowMarkup = false;
         var count = 0;
         for (var i = 0; i < list.Count; i++)
         {
@@ -34,6 +36,10 @@ internal static class StateReader
             if (string.Equals(key, OriginalFormatKey, StringComparison.Ordinal))
             {
                 originalFormat = list[i].Value as string;
+            }
+            else if (string.Equals(key, MarkupEnabledKey, StringComparison.Ordinal))
+            {
+                allowMarkup = list[i].Value is true;
             }
             else
             {
@@ -43,7 +49,7 @@ internal static class StateReader
 
         if (count == 0)
         {
-            return (originalFormat, []);
+            return (originalFormat, [], allowMarkup);
         }
 
         var placeholders = new Placeholder[count];
@@ -55,16 +61,21 @@ internal static class StateReader
             {
                 continue;
             }
+            if (string.Equals(kv.Key, MarkupEnabledKey, StringComparison.Ordinal))
+            {
+                continue;
+            }
 
             placeholders[w++] = new Placeholder(kv.Key, kv.Value, kv.Value?.GetType());
         }
 
-        return (originalFormat, placeholders);
+        return (originalFormat, placeholders, allowMarkup);
     }
 
-    private static (string? OriginalFormat, Placeholder[] Placeholders) ExtractFromEnumerable(IEnumerable<KeyValuePair<string, object?>> enumerable)
+    private static (string? OriginalFormat, Placeholder[] Placeholders, bool AllowMarkup) ExtractFromEnumerable(IEnumerable<KeyValuePair<string, object?>> enumerable)
     {
         string? originalFormat = null;
+        var allowMarkup = false;
         List<Placeholder>? placeholders = null;
         foreach (var kv in enumerable)
         {
@@ -73,11 +84,16 @@ internal static class StateReader
                 originalFormat = kv.Value as string;
                 continue;
             }
+            if (string.Equals(kv.Key, MarkupEnabledKey, StringComparison.Ordinal))
+            {
+                allowMarkup = kv.Value is true;
+                continue;
+            }
 
             placeholders ??= new List<Placeholder>(4);
             placeholders.Add(new Placeholder(kv.Key, kv.Value, kv.Value?.GetType()));
         }
 
-        return (originalFormat, placeholders?.ToArray() ?? []);
+        return (originalFormat, placeholders?.ToArray() ?? [], allowMarkup);
     }
 }

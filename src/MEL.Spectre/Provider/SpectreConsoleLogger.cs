@@ -42,7 +42,7 @@ internal sealed class SpectreConsoleLogger : ILogger
         }
 
         var message = formatter(state, exception);
-        var (originalFormat, placeholders) = StateReader.Extract(state);
+        var (originalFormat, placeholders, allowMarkup) = StateReader.Extract(state);
         var scopes = _includeScopes ? CaptureScopes() : [];
         var activity = _includeActivity ? Activity.Current : null;
 
@@ -54,6 +54,7 @@ internal sealed class SpectreConsoleLogger : ILogger
             EventId = eventId,
             Message = message,
             OriginalFormat = originalFormat,
+            AllowMarkup = allowMarkup,
             Exception = exception,
             Placeholders = placeholders,
             Scopes = scopes,
