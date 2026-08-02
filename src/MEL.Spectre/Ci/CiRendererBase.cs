@@ -173,17 +173,25 @@ internal abstract class CiRendererBase : ICiRenderer
         var normalizedMessages = exceptions
             .Select(current => PlaceholderFormatter.NormalizeForMasking(current.Message))
             .ToArray();
-        var renderOptions = RenderOptions.Create(console) with
+        string exceptionText;
+        if (RuntimeFeature.IsDynamicCodeSupported)
         {
-            ConsoleSize = new Size(ExceptionMaskingRenderWidth, console.Profile.Height),
-        };
-        var builder = new StringBuilder();
-        foreach (var segment in exception.GetRenderable(_context.ExceptionFormats).Render(renderOptions, ExceptionMaskingRenderWidth))
+            var renderOptions = RenderOptions.Create(console) with
+            {
+                ConsoleSize = new Size(ExceptionMaskingRenderWidth, console.Profile.Height),
+            };
+            var builder = new StringBuilder();
+            foreach (var segment in exception.GetRenderable(_context.ExceptionFormats).Render(renderOptions, ExceptionMaskingRenderWidth))
+            {
+                builder.Append(segment.Text);
+            }
+            exceptionText = builder.ToString();
+        }
+        else
         {
-            builder.Append(segment.Text);
+            exceptionText = FormatExceptionForAot(exception, _context.ExceptionFormats);
         }
 
-        var exceptionText = builder.ToString();
         if (!_context.Masker.ShouldMaskValue(exceptionText)
             && !normalizedMessages.Any(_context.Masker.ShouldMaskValue))
         {
