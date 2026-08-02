@@ -163,6 +163,25 @@ public class MessageFormatterTests
     }
 
     [Test]
+    public async Task Value_pattern_scanning_masks_links_in_combined_markup_tags()
+    {
+        var masker = new SecretMasker([], [@"secret-\w+"], 256);
+        var collected = new List<string>();
+
+        var result = MessageFormatter.Render(
+            "[bold link=https://host/secret-value]click[/]",
+            "fallback",
+            [],
+            SpectreTheme.Monochrome,
+            masker,
+            collected,
+            allowMarkupInTemplate: true);
+
+        await Assert.That(result).IsEqualTo("[bold link=https://host/***]click[/]");
+        await Assert.That(collected).Contains("secret-value");
+    }
+
+    [Test]
     public async Task Zero_length_value_pattern_masks_the_whole_link_target()
     {
         var masker = new SecretMasker([], [@"(?=secret-\w+)"], 256);

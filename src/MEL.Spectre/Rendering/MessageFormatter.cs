@@ -199,10 +199,8 @@ internal static class MessageFormatter
                 continue;
             }
 
-            if (tagEnd - i > 7 && rendered.AsSpan(i + 1, 5).Equals("link=", StringComparison.OrdinalIgnoreCase))
+            if (TryFindMarkupLinkTarget(rendered, i, tagEnd, out var targetStart, out var targetEnd))
             {
-                var targetStart = i + 6;
-                var targetEnd = tagEnd - 1;
                 var target = rendered[targetStart..targetEnd];
                 var logicalTarget = target.IndexOfAny('[', ']') >= 0
                     ? Markup.Remove(target)
@@ -591,6 +589,44 @@ internal static class MessageFormatter
             : start + 2 < rendered.Length && rendered[start + 1] == '[' && rendered[start + 2] == '['
                 ? "\x1b[[0m"
                 : "\x1b[0m";
+
+    private static bool TryFindMarkupLinkTarget(
+        string text,
+        int tagStart,
+        int tagEnd,
+        out int targetStart,
+        out int targetEnd)
+    {
+        var tagContentEnd = tagEnd - 1;
+        var componentStart = tagStart + 1;
+        while (componentStart < tagContentEnd)
+        {
+            while (componentStart < tagContentEnd && text[componentStart] == ' ')
+            {
+                componentStart++;
+            }
+
+            var componentEnd = componentStart;
+            while (componentEnd < tagContentEnd && text[componentEnd] != ' ')
+            {
+                componentEnd++;
+            }
+
+            if (componentEnd - componentStart > 5
+                && text.AsSpan(componentStart, 5).Equals("link=", StringComparison.OrdinalIgnoreCase))
+            {
+                targetStart = componentStart + 5;
+                targetEnd = componentEnd;
+                return true;
+            }
+
+            componentStart = componentEnd + 1;
+        }
+
+        targetStart = 0;
+        targetEnd = 0;
+        return false;
+    }
 
     private static bool TryReadMarkupTag(string text, int start, out int end)
     {
