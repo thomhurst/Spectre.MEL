@@ -90,6 +90,20 @@ public class MessageFormatterTests
     }
 
     [Test]
+    public async Task Default_value_patterns_mask_entire_private_key_block()
+    {
+        const string privateKey = "-----BEGIN PRIVATE KEY-----\nYWJjZGVmZ2hpamtsbW5vcA==\n-----END PRIVATE KEY-----";
+        var options = new SpectreConsoleLoggerOptions();
+        var masker = new SecretMasker(options.MaskedNamePatterns, options.MaskedValuePatterns, 256);
+        var collected = new List<string>();
+
+        var result = MessageFormatter.Render(null, $"{privateKey}\nsafe", [], SpectreTheme.Monochrome, masker, collected);
+
+        await Assert.That(result).IsEqualTo("***\nsafe");
+        await Assert.That(collected).Contains(privateKey);
+    }
+
+    [Test]
     public async Task Value_pattern_scanning_preserves_unmatched_markup_styling()
     {
         var masker = new SecretMasker([], [@"secret-\w+"], 256);
