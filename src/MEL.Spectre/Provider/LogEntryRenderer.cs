@@ -27,6 +27,18 @@ internal sealed class LogEntryRenderer
             }
             _renderer.RenderEntry(_console, entry, _activeScopes.Count);
         }
+        catch (MalformedMarkupException ex)
+        {
+            try
+            {
+                _renderer.RenderEntryFallback(_console, entry, _activeScopes.Count);
+                LogWriterDiagnostics.Emit($"MEL.Spectre: render fault recovered with escaped plain text: {ex}");
+            }
+            catch (Exception fallbackEx) when (!FatalExceptions.IsFatal(fallbackEx))
+            {
+                LogWriterDiagnostics.Emit($"MEL.Spectre: render fault: {ex}{Environment.NewLine}MEL.Spectre: fallback render fault: {fallbackEx}");
+            }
+        }
         catch (Exception ex) when (!FatalExceptions.IsFatal(ex))
         {
             LogWriterDiagnostics.Emit($"MEL.Spectre: render fault: {ex}");

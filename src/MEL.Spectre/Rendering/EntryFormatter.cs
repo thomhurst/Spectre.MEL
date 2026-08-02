@@ -26,6 +26,8 @@ internal sealed class EntryFormatter
     private readonly bool _allowMarkupInTemplate;
     private readonly EmbeddedAnsiMode _embeddedAnsi;
 
+    public bool AllowsMessageMarkup => _allowMarkupInTemplate;
+
     public EntryFormatter(OutputTemplate template, SpectreTheme theme, SecretMasker masker, bool allowMarkupInTemplate = false, LogLevel minimumInlineLevel = LogLevel.Trace, EmbeddedAnsiMode embeddedAnsi = EmbeddedAnsiMode.Convert)
     {
         _template = template;
@@ -55,10 +57,10 @@ internal sealed class EntryFormatter
         }
     }
 
-    public string Format(LogEntry entry, List<string>? maskValueSink = null)
+    public string Format(LogEntry entry, List<string>? maskValueSink = null, bool escapeMessageMarkup = false)
     {
         var builder = new StringBuilder(256);
-        var allowMarkup = _allowMarkupInTemplate || entry.AllowMarkup;
+        var allowMessageMarkup = (_allowMarkupInTemplate || entry.AllowMarkup) && !escapeMessageMarkup;
         var suppressLevel = entry.Level < _minimumInlineLevel;
 
         // One-segment-deep lookahead: hold the most recent Literal so we can trim a trailing "[" from it
@@ -115,7 +117,7 @@ internal sealed class EntryFormatter
                     break;
                 case SegmentKind.Message:
                     builder.Append(_messageOpenTag);
-                    builder.Append(MessageFormatter.Render(entry.OriginalFormat, entry.Message, entry.Placeholders, _theme, _masker, maskValueSink, allowMarkup, _embeddedAnsi));
+                    builder.Append(MessageFormatter.Render(entry.OriginalFormat, entry.Message, entry.Placeholders, _theme, _masker, maskValueSink, allowMessageMarkup, _embeddedAnsi));
                     builder.Append(_messageCloseTag);
                     break;
                 case SegmentKind.NewLine:
@@ -164,11 +166,14 @@ internal sealed class EntryFormatter
         return builder.ToString();
     }
 
-    public string FormatMessage(LogEntry entry, List<string>? maskValueSink = null) =>
-        string.Concat(
+    public string FormatMessage(LogEntry entry, List<string>? maskValueSink = null, bool escapeMessageMarkup = false)
+    {
+        var allowMessageMarkup = (_allowMarkupInTemplate || entry.AllowMarkup) && !escapeMessageMarkup;
+        return string.Concat(
             _messageOpenTag,
-            MessageFormatter.Render(entry.OriginalFormat, entry.Message, entry.Placeholders, _theme, _masker, maskValueSink, _allowMarkupInTemplate || entry.AllowMarkup, _embeddedAnsi),
+            MessageFormatter.Render(entry.OriginalFormat, entry.Message, entry.Placeholders, _theme, _masker, maskValueSink, allowMessageMarkup, _embeddedAnsi),
             _messageCloseTag);
+    }
 
     private static void FlushPendingLiteral(StringBuilder builder, TemplateSegment segment, ref bool dropLeadingCloseBracket)
     {

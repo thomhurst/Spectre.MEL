@@ -405,6 +405,52 @@ public class CiRendererTests
     }
 
     [Test]
+    [NotInParallel("stderr-capture")]
+    public async Task AllowMarkupInMessageTemplate_invalid_markup_falls_back_to_plain_text()
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            logger.LogInformation("Restoring [my.csproj]");
+        }, o =>
+        {
+            o.AllowMarkupInMessageTemplate = true;
+            o.Template = "{Message}";
+        });
+
+        await Assert.That(output).Contains("Restoring [my.csproj]");
+    }
+
+    [Test]
+    [NotInParallel("stderr-capture")]
+    public async Task LogMarkup_invalid_markup_falls_back_to_plain_text()
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            logger.LogMarkup("Restoring [my.csproj]");
+        }, o => o.Template = "{Message}");
+
+        await Assert.That(output).Contains("Restoring [my.csproj]");
+    }
+
+    [Test]
+    [NotInParallel("stderr-capture")]
+    public async Task GitHubActions_invalid_markup_annotation_falls_back_to_plain_text()
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.GitHubActions, logger =>
+        {
+            logger.LogWarning("Restoring [my.csproj] with {Authorization}", "Bearer xyz");
+        }, o =>
+        {
+            o.AllowMarkupInMessageTemplate = true;
+            o.Template = "{Message}";
+        });
+
+        await Assert.That(output).Contains("::warning::Restoring [my.csproj] with ***");
+        await Assert.That(CountSubstring(output, "::warning::")).IsEqualTo(1);
+        await Assert.That(CountSubstring(output, "::add-mask::Bearer xyz")).IsEqualTo(1);
+    }
+
+    [Test]
     public async Task AllowMarkupInMessageTemplate_off_escapes_markup_tags()
     {
         var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>

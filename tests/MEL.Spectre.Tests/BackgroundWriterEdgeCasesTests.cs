@@ -139,8 +139,10 @@ public class BackgroundWriterEdgeCasesTests
             System.Console.SetError(originalErr);
         }
 
+        await Assert.That(poison.Output.Split("KABOOM", StringSplitOptions.None).Length - 1).IsEqualTo(1);
         await Assert.That(poison.Output).Contains("safe entry");
         await Assert.That(stderr.ToString()).Contains("render fault");
+        await Assert.That(stderr.ToString()).DoesNotContain("recovered");
     }
 
     [Test]

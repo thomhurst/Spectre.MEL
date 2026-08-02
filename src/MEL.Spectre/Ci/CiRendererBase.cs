@@ -36,13 +36,29 @@ internal abstract class CiRendererBase : ICiRenderer
 
     public virtual void RenderEntry(IAnsiConsole console, LogEntry entry, int scopeDepth)
     {
+        RenderEntryCore(console, entry, scopeDepth, escapeMessageMarkup: false);
+    }
+
+    public virtual void RenderEntryFallback(IAnsiConsole console, LogEntry entry, int scopeDepth)
+    {
+        RenderEntryCore(console, entry, scopeDepth, escapeMessageMarkup: true);
+    }
+
+    private void RenderEntryCore(IAnsiConsole console, LogEntry entry, int scopeDepth, bool escapeMessageMarkup)
+    {
         var maskValues = new List<string>(0);
         var annotation = GetLevelAnnotation(entry.Level);
         var prefix = annotation is null ? null : BuildLevelAnnotationPrefix(annotation.Value);
         var suppressLevel = prefix is not null && _context.SuppressInlineLevelOnCiAnnotation;
         var markup = suppressLevel
-            ? _context.Formatter.FormatMessage(entry, maskValues)
-            : _context.Formatter.Format(entry, maskValues);
+            ? _context.Formatter.FormatMessage(entry, maskValues, escapeMessageMarkup)
+            : _context.Formatter.Format(entry, maskValues, escapeMessageMarkup);
+        var indent = BuildIndent(scopeDepth);
+        var renderedMarkup = indent is null ? markup : indent + markup;
+        if ((_context.Formatter.AllowsMessageMarkup || entry.AllowMarkup) && !escapeMessageMarkup)
+        {
+            ValidateMarkup(renderedMarkup);
+        }
 
         if (Capabilities.SupportsMasking)
         {
@@ -55,20 +71,14 @@ internal abstract class CiRendererBase : ICiRenderer
             }
         }
 
-        var indent = BuildIndent(scopeDepth);
         if (prefix is not null)
         {
-            var plainLine = Markup.Remove(indent is null ? markup : indent + markup);
+            var plainLine = Markup.Remove(renderedMarkup);
             WriteCommand(console, prefix + EscapeLevelAnnotationPayload(plainLine));
         }
         else
         {
-            if (indent is not null)
-            {
-                console.Markup(indent);
-            }
-
-            console.MarkupLine(markup);
+            console.MarkupLine(renderedMarkup);
         }
 
         if (entry.Exception is not null)
@@ -128,6 +138,18 @@ internal abstract class CiRendererBase : ICiRenderer
         else if (exception.InnerException is not null)
         {
             AppendExceptionWithoutStack(builder, exception.InnerException);
+        }
+    }
+
+    private static void ValidateMarkup(string markup)
+    {
+        try
+        {
+            _ = new Markup(markup);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new MalformedMarkupException(ex);
         }
     }
 }
