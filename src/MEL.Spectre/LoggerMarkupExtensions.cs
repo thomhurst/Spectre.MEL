@@ -1,4 +1,3 @@
-using System.Collections;
 using Microsoft.Extensions.Logging;
 using Spectre.Console;
 using MEL.Spectre.Provider;
@@ -34,32 +33,15 @@ public static class LoggerMarkupExtensions
         logger.Log(logLevel, eventId, state, exception, static (value, _) => value.ToString());
     }
 
-    private sealed class MarkupLogState : IReadOnlyList<KeyValuePair<string, object?>>
+    private sealed class MarkupLogState : IMarkupLogState
     {
-        private readonly string _markup;
-
         public MarkupLogState(string markup)
         {
-            _markup = markup;
+            Markup = markup;
         }
 
-        public int Count => 2;
+        public string Markup { get; }
 
-        public KeyValuePair<string, object?> this[int index] => index switch
-        {
-            0 => new(StateReader.MarkupEnabledKey, true),
-            1 => new(StateReader.OriginalFormatKey, _markup),
-            _ => throw new ArgumentOutOfRangeException(nameof(index)),
-        };
-
-        public IEnumerator<KeyValuePair<string, object?>> GetEnumerator()
-        {
-            yield return this[0];
-            yield return this[1];
-        }
-
-        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
-
-        public override string ToString() => _markup;
+        public override string ToString() => Markup;
     }
 }

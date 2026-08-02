@@ -341,6 +341,18 @@ public class CiRendererTests
     }
 
     [Test]
+    public async Task LogMarkup_treats_braces_as_completed_text()
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            logger.LogMarkup("[green]Payload: {\"ok\":true}[/]");
+        }, o => o.Template = "{Message}");
+
+        await Assert.That(output).Contains("Payload: {\"ok\":true}");
+        await Assert.That(output).DoesNotContain("(null)");
+    }
+
+    [Test]
     public async Task AllowMarkupInMessageTemplate_off_escapes_markup_tags()
     {
         var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>

@@ -1,4 +1,5 @@
 using MEL.Spectre.Provider;
+using Microsoft.Extensions.Logging;
 using TUnit.Assertions;
 using TUnit.Assertions.Extensions;
 
@@ -51,18 +52,39 @@ public class StateReaderTests
     }
 
     [Test]
-    public async Task Extracts_markup_marker_without_exposing_placeholder()
+    public async Task Extracts_markup_state_without_exposing_placeholder()
     {
-        var state = new List<KeyValuePair<string, object?>>
-        {
-            new(StateReader.MarkupEnabledKey, true),
-            new(StateReader.OriginalFormatKey, "[green]ok[/]"),
-        };
+        var state = new TestMarkupState("[green]ok[/]");
 
         var (originalFormat, placeholders, allowMarkup) = StateReader.Extract(state);
 
-        await Assert.That(originalFormat).IsEqualTo("[green]ok[/]");
+        await Assert.That(originalFormat).IsNull();
         await Assert.That(placeholders).IsEmpty();
         await Assert.That(allowMarkup).IsTrue();
     }
+
+    [Test]
+    public async Task LogMarkup_does_not_expose_provider_marker_as_structured_state()
+    {
+        var logger = new CapturingLogger();
+
+        logger.LogMarkup("[green]ok[/]");
+
+        await Assert.That(logger.State is IEnumerable<KeyValuePair<string, object?>>).IsFalse();
+        await Assert.That(logger.State?.ToString()).IsEqualTo("[green]ok[/]");
+    }
+
+    private sealed class CapturingLogger : ILogger
+    {
+        public object? State { get; private set; }
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            State = state;
+    }
+
+    private sealed record TestMarkupState(string Markup) : IMarkupLogState;
 }

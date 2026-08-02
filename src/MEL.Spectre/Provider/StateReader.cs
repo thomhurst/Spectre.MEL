@@ -2,11 +2,15 @@ namespace MEL.Spectre.Provider;
 
 internal static class StateReader
 {
-    internal const string OriginalFormatKey = "{OriginalFormat}";
-    internal const string MarkupEnabledKey = "{MEL.Spectre.Markup}";
+    private const string OriginalFormatKey = "{OriginalFormat}";
 
     public static (string? OriginalFormat, Placeholder[] Placeholders, bool AllowMarkup) Extract<TState>(TState state)
     {
+        if (state is IMarkupLogState)
+        {
+            return (null, [], true);
+        }
+
         if (state is IReadOnlyList<KeyValuePair<string, object?>> list)
         {
             return ExtractFromList(list);
@@ -28,7 +32,6 @@ internal static class StateReader
         }
 
         string? originalFormat = null;
-        var allowMarkup = false;
         var count = 0;
         for (var i = 0; i < list.Count; i++)
         {
@@ -36,10 +39,6 @@ internal static class StateReader
             if (string.Equals(key, OriginalFormatKey, StringComparison.Ordinal))
             {
                 originalFormat = list[i].Value as string;
-            }
-            else if (string.Equals(key, MarkupEnabledKey, StringComparison.Ordinal))
-            {
-                allowMarkup = list[i].Value is true;
             }
             else
             {
@@ -49,7 +48,7 @@ internal static class StateReader
 
         if (count == 0)
         {
-            return (originalFormat, [], allowMarkup);
+            return (originalFormat, [], false);
         }
 
         var placeholders = new Placeholder[count];
@@ -61,21 +60,15 @@ internal static class StateReader
             {
                 continue;
             }
-            if (string.Equals(kv.Key, MarkupEnabledKey, StringComparison.Ordinal))
-            {
-                continue;
-            }
-
             placeholders[w++] = new Placeholder(kv.Key, kv.Value, kv.Value?.GetType());
         }
 
-        return (originalFormat, placeholders, allowMarkup);
+        return (originalFormat, placeholders, false);
     }
 
     private static (string? OriginalFormat, Placeholder[] Placeholders, bool AllowMarkup) ExtractFromEnumerable(IEnumerable<KeyValuePair<string, object?>> enumerable)
     {
         string? originalFormat = null;
-        var allowMarkup = false;
         List<Placeholder>? placeholders = null;
         foreach (var kv in enumerable)
         {
@@ -84,16 +77,14 @@ internal static class StateReader
                 originalFormat = kv.Value as string;
                 continue;
             }
-            if (string.Equals(kv.Key, MarkupEnabledKey, StringComparison.Ordinal))
-            {
-                allowMarkup = kv.Value is true;
-                continue;
-            }
-
             placeholders ??= new List<Placeholder>(4);
             placeholders.Add(new Placeholder(kv.Key, kv.Value, kv.Value?.GetType()));
         }
 
-        return (originalFormat, placeholders?.ToArray() ?? [], allowMarkup);
+        return (originalFormat, placeholders?.ToArray() ?? [], false);
     }
+}
+
+internal interface IMarkupLogState
+{
 }
