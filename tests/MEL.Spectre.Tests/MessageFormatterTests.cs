@@ -90,6 +90,27 @@ public class MessageFormatterTests
     }
 
     [Test]
+    public async Task Value_pattern_scanning_preserves_unmatched_markup_styling()
+    {
+        var masker = new SecretMasker([], [@"secret-\w+"], 256);
+
+        var result = MessageFormatter.Render("[green]safe[/] secret-value", "fallback", [], SpectreTheme.Monochrome, masker, allowMarkupInTemplate: true);
+
+        await Assert.That(result).IsEqualTo("[green]safe[/] ***");
+    }
+
+    [Test]
+    public async Task Value_pattern_scanning_preserves_unmatched_converted_ansi_styling()
+    {
+        var masker = new SecretMasker([], [@"secret-\w+"], 256);
+        var style = new global::Spectre.Console.Style(global::Spectre.Console.Color.FromInt32(1)).ToMarkup();
+
+        var result = MessageFormatter.Render("safe \x1b[31mstyled\x1b[0m secret-value", "fallback", [], SpectreTheme.Monochrome, masker);
+
+        await Assert.That(result).IsEqualTo($"safe [{style}]styled[/] ***");
+    }
+
+    [Test]
     public async Task Value_pattern_scanning_cannot_be_bypassed_with_ansi_sequences()
     {
         var masker = new SecretMasker([], [@"secret-value"], 256);

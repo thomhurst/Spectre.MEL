@@ -116,35 +116,66 @@ internal sealed class SecretMasker
 
     public string MaskValuePatterns(string value, List<string>? matchedValues = null)
     {
-        var masked = value;
-        for (var i = 0; i < _valuePatterns.Length; i++)
-        {
-            masked = MaskMatches(_valuePatterns[i], masked, matchedValues);
-        }
-        return masked;
-    }
-
-    private static string MaskMatches(Regex pattern, string value, List<string>? matchedValues)
-    {
-        StringBuilder? builder = null;
-        var copiedLength = 0;
-
-        foreach (var match in pattern.EnumerateMatches(value))
-        {
-            builder ??= new StringBuilder(value.Length);
-            builder.Append(value.AsSpan(copiedLength, match.Index - copiedLength));
-            builder.Append(MaskedToken);
-            matchedValues?.Add(value.Substring(match.Index, match.Length));
-            copiedLength = match.Index + match.Length;
-        }
-
-        if (builder is null)
+        var ranges = GetValuePatternMaskRanges(value, matchedValues);
+        if (ranges.Count == 0)
         {
             return value;
         }
 
+        var builder = new StringBuilder(value.Length);
+        var copiedLength = 0;
+        for (var i = 0; i < ranges.Count; i++)
+        {
+            var range = ranges[i];
+            builder.Append(value.AsSpan(copiedLength, range.Start - copiedLength));
+            builder.Append(MaskedToken);
+            copiedLength = range.End;
+        }
         builder.Append(value.AsSpan(copiedLength));
         return builder.ToString();
+    }
+
+    internal List<MaskRange> GetValuePatternMaskRanges(string value, List<string>? matchedValues = null)
+    {
+        var ranges = new List<MaskRange>();
+        for (var patternIndex = 0; patternIndex < _valuePatterns.Length; patternIndex++)
+        {
+            foreach (Match match in _valuePatterns[patternIndex].Matches(value))
+            {
+                ranges.Add(new MaskRange(match.Index, match.Index + match.Length));
+                matchedValues?.Add(match.Value);
+            }
+        }
+
+        if (ranges.Count < 2)
+        {
+            return ranges;
+        }
+
+        ranges.Sort(static (left, right) =>
+        {
+            var byStart = left.Start.CompareTo(right.Start);
+            return byStart != 0 ? byStart : right.End.CompareTo(left.End);
+        });
+
+        var writeIndex = 0;
+        for (var readIndex = 1; readIndex < ranges.Count; readIndex++)
+        {
+            var current = ranges[readIndex];
+            var previous = ranges[writeIndex];
+            if (current.Start <= previous.End)
+            {
+                if (current.End > previous.End)
+                {
+                    ranges[writeIndex] = previous with { End = current.End };
+                }
+                continue;
+            }
+
+            ranges[++writeIndex] = current;
+        }
+        ranges.RemoveRange(writeIndex + 1, ranges.Count - writeIndex - 1);
+        return ranges;
     }
 
     private bool MatchNamePatterns(string name)
@@ -177,5 +208,5 @@ internal sealed class SecretMasker
         return _emitted.TryAdd(value, 0);
     }
 
-    private readonly record struct MaskRange(int Start, int End);
+    internal readonly record struct MaskRange(int Start, int End);
 }
