@@ -422,6 +422,18 @@ public class CiRendererTests
 
     [Test]
     [NotInParallel("stderr-capture")]
+    public async Task LogMarkup_invalid_markup_falls_back_to_plain_text()
+    {
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            logger.LogMarkup("Restoring [my.csproj]");
+        }, o => o.Template = "{Message}");
+
+        await Assert.That(output).Contains("Restoring [my.csproj]");
+    }
+
+    [Test]
+    [NotInParallel("stderr-capture")]
     public async Task GitHubActions_invalid_markup_annotation_falls_back_to_plain_text()
     {
         var output = await LogTestHarness.CaptureAsync(CiMode.GitHubActions, logger =>

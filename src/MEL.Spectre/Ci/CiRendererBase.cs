@@ -55,7 +55,7 @@ internal abstract class CiRendererBase : ICiRenderer
             : _context.Formatter.Format(entry, maskValues, escapeMessageMarkup);
         var indent = BuildIndent(scopeDepth);
         var renderedMarkup = indent is null ? markup : indent + markup;
-        if (_context.Formatter.AllowsMessageMarkup && !escapeMessageMarkup)
+        if ((_context.Formatter.AllowsMessageMarkup || entry.AllowMarkup) && !escapeMessageMarkup)
         {
             ValidateMarkup(renderedMarkup);
         }
