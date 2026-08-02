@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using MEL.Spectre.Masking;
 using MEL.Spectre.Provider;
 using MEL.Spectre.Rendering;
@@ -49,6 +50,20 @@ public class MessageFormatterTests
         var masker = NewMasker();
         var result = MessageFormatter.Render("[group] {Value}", "fb", [new Placeholder("Value", 1, typeof(int))], theme, masker);
         await Assert.That(result).IsEqualTo("[[group]] 1");
+    }
+
+    [Test]
+    public async Task Collapses_message_template_brace_escapes()
+    {
+        var theme = SpectreTheme.Monochrome;
+        var masker = NewMasker();
+        var capture = new CapturingLogger();
+        capture.LogInformation("use {{0}} and }} braces with {Value}", 42);
+        var (originalFormat, placeholders) = StateReader.Extract(capture.State);
+
+        var result = MessageFormatter.Render(originalFormat, capture.Message!, placeholders, theme, masker);
+
+        await Assert.That(result).IsEqualTo(capture.Message);
     }
 
     [Test]
@@ -117,5 +132,27 @@ public class MessageFormatterTests
     private sealed class BracketyToString
     {
         public override string ToString() => "[REDACTED]";
+    }
+
+    private sealed class CapturingLogger : ILogger
+    {
+        public object? State { get; private set; }
+
+        public string? Message { get; private set; }
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            State = state;
+            Message = formatter(state, exception);
+        }
     }
 }
