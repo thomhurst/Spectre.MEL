@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using Spectre.Console;
 using MEL.Spectre.Masking;
@@ -71,7 +72,14 @@ internal abstract class CiRendererBase : ICiRenderer
 
         if (entry.Exception is not null)
         {
-            console.WriteException(entry.Exception, _context.ExceptionFormats);
+            if (RuntimeFeature.IsDynamicCodeSupported)
+            {
+                console.WriteException(entry.Exception, _context.ExceptionFormats);
+            }
+            else
+            {
+                console.MarkupLine(Markup.Escape(entry.Exception.ToString()));
+            }
         }
     }
 

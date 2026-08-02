@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Spectre.Console;
@@ -214,6 +216,24 @@ public class OutputImprovementsTests
         captured.WriteJsonPanel("Empty", null, CiMode.Off);
 
         await Assert.That(captured.Output).Contains("null");
+    }
+
+    [Test]
+    public async Task WriteJsonPanel_uses_provided_type_info()
+    {
+        var captured = new TestConsole();
+        captured.Profile.Width = 200;
+        var options = new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+        };
+        var typeInfo = (JsonTypeInfo<Dictionary<string, bool>>)options.GetTypeInfo(typeof(Dictionary<string, bool>));
+
+        captured.WriteJsonPanel("Config", new Dictionary<string, bool> { ["Verbose"] = true }, typeInfo, CiMode.Off);
+
+        await Assert.That(captured.Output).Contains("Verbose");
+        await Assert.That(captured.Output).Contains("true");
     }
 
     [Test]
