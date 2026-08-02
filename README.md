@@ -199,6 +199,19 @@ In synchronous mode, an entry is rendered before `ILogger.Log` returns. Direct
 writes should still use `SynchronizationLock` when other threads may write to
 the same console.
 
+Use `Suspend()` to suppress only MEL.Spectre output in the current asynchronous
+context. Other registered logging providers remain active:
+
+```csharp
+using (control.Suspend())
+{
+    await RunWithDirectConsoleRenderingAsync();
+}
+```
+
+`WouldRender(category, level)` evaluates current `LoggerFilterOptions` for the
+`SpectreConsole` provider alias without writing a log entry.
+
 ## License
 
 MIT

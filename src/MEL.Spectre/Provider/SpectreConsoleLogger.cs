@@ -10,6 +10,7 @@ internal sealed class SpectreConsoleLogger : ILogger
     private readonly string _category;
     private readonly ILogEntryWriter _writer;
     private readonly Func<IExternalScopeProvider?> _scopeProviderAccessor;
+    private readonly SpectreConsoleLoggerSuspension _suspension;
     private readonly bool _includeScopes;
     private readonly bool _includeActivity;
 
@@ -17,12 +18,14 @@ internal sealed class SpectreConsoleLogger : ILogger
         string category,
         ILogEntryWriter writer,
         Func<IExternalScopeProvider?> scopeProviderAccessor,
+        SpectreConsoleLoggerSuspension suspension,
         bool includeScopes,
         bool includeActivity)
     {
         _category = category;
         _writer = writer;
         _scopeProviderAccessor = scopeProviderAccessor;
+        _suspension = suspension;
         _includeScopes = includeScopes;
         _includeActivity = includeActivity;
     }
@@ -32,7 +35,7 @@ internal sealed class SpectreConsoleLogger : ILogger
         return _scopeProviderAccessor()?.Push(state);
     }
 
-    public bool IsEnabled(LogLevel logLevel) => logLevel != LogLevel.None;
+    public bool IsEnabled(LogLevel logLevel) => logLevel != LogLevel.None && !_suspension.IsSuspended;
 
     public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
     {
