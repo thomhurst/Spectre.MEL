@@ -161,6 +161,15 @@ public class SecretMaskerTests
         await Assert.That(masker.TryRegisterForEmission("c")).IsFalse();
     }
 
+    [Test]
+    public async Task Value_pattern_timeout_is_treated_as_non_match()
+    {
+        var masker = new SecretMasker([], ["(a+)+$"], 256, TimeSpan.FromMilliseconds(1));
+        var value = new string('a', 10_000) + "!";
+
+        await Assert.That(masker.MaskValuePatterns(value)).IsEqualTo(value);
+    }
+
     private static string RenderDefaultValue(string value) =>
         MessageFormatter.Render(
             "{Output}",

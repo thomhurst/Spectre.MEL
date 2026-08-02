@@ -153,6 +153,43 @@ public class MessageFormatterTests
     }
 
     [Test]
+    public async Task Value_pattern_scanning_masks_passthrough_OSC_payloads()
+    {
+        var masker = new SecretMasker([], [@"secret-\w+"], 256);
+        var collected = new List<string>();
+
+        var result = MessageFormatter.Render(
+            null,
+            "\x1b]8;;https://host/secret-value\x1b\\click\x1b]8;;\x1b\\",
+            [],
+            SpectreTheme.Monochrome,
+            masker,
+            collected,
+            embeddedAnsi: EmbeddedAnsiMode.Passthrough);
+
+        await Assert.That(result).Contains("https://host/***");
+        await Assert.That(result).DoesNotContain("secret-value");
+        await Assert.That(collected).Contains("secret-value");
+    }
+
+    [Test]
+    public async Task Passthrough_masking_preserves_balanced_OSC_8_sequences()
+    {
+        var masker = new SecretMasker([], [@"secret-value"], 256);
+
+        var result = MessageFormatter.Render(
+            null,
+            "\x1b]8;;https://safe\x1b\\safe secret-value\x1b]8;;\x1b\\ tail",
+            [],
+            SpectreTheme.Monochrome,
+            masker,
+            embeddedAnsi: EmbeddedAnsiMode.Passthrough);
+
+        await Assert.That(result).Contains("safe ***");
+        await Assert.That(result.Split("\x1b]]8;;", StringSplitOptions.None).Length - 1).IsEqualTo(2);
+    }
+
+    [Test]
     public async Task Value_pattern_scanning_preserves_unmatched_converted_ansi_styling()
     {
         var masker = new SecretMasker([], [@"secret-\w+"], 256);

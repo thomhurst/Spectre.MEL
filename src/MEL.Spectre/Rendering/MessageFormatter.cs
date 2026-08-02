@@ -167,7 +167,10 @@ internal static class MessageFormatter
             // markup unchanged so that validation can select the escaped fallback path.
             return rendered;
         }
-        var attributeMaskedRendered = MaskMarkupLinkTargets(rendered, masker, collectMaskValues);
+        var emissionMaskedRendered = MaskAnsiStringPayloads(
+            MaskMarkupLinkTargets(rendered, masker, collectMaskValues),
+            masker,
+            collectMaskValues);
         if (AnsiSanitizer.ContainsAnsi(plainText))
         {
             plainText = StripAnsiForMasking(plainText);
@@ -177,10 +180,10 @@ internal static class MessageFormatter
         var ranges = masker.GetValuePatternMaskRanges(plainText, collectMaskValues);
         if (ranges.Count == 0)
         {
-            return attributeMaskedRendered;
+            return emissionMaskedRendered;
         }
 
-        return MaskRenderedText(attributeMaskedRendered, ranges);
+        return MaskRenderedText(emissionMaskedRendered, ranges);
     }
 
     private static string MaskMarkupLinkTargets(string rendered, SecretMasker masker, List<string>? collectMaskValues)
@@ -212,6 +215,40 @@ internal static class MessageFormatter
             }
 
             i = tagEnd;
+        }
+
+        if (builder is null)
+        {
+            return rendered;
+        }
+
+        builder.Append(rendered, copiedLength, rendered.Length - copiedLength);
+        return builder.ToString();
+    }
+
+    private static string MaskAnsiStringPayloads(string rendered, SecretMasker masker, List<string>? collectMaskValues)
+    {
+        StringBuilder? builder = null;
+        var copiedLength = 0;
+
+        for (var i = 0; i < rendered.Length;)
+        {
+            if (!TryReadAnsiStringControl(rendered, i, out var payloadStart, out var payloadEnd, out var sequenceEnd))
+            {
+                i++;
+                continue;
+            }
+
+            var payload = rendered[payloadStart..payloadEnd];
+            var maskedPayload = masker.MaskValuePatterns(payload, collectMaskValues);
+            if (!string.Equals(payload, maskedPayload, StringComparison.Ordinal))
+            {
+                builder ??= new StringBuilder(rendered.Length);
+                builder.Append(rendered, copiedLength, payloadStart - copiedLength);
+                builder.Append(maskedPayload);
+                copiedLength = payloadEnd;
+            }
+            i = sequenceEnd > i ? sequenceEnd : i + 1;
         }
 
         if (builder is null)
@@ -368,9 +405,15 @@ internal static class MessageFormatter
             if (AnsiSanitizer.IsSequenceIntroducer(rendered[i]))
             {
                 var sequenceStart = i;
+                var preserveOsc8 = IsOsc8Sequence(rendered, sequenceStart);
                 var wasActive = ansi.HasActiveStyle;
                 ConsumeRenderedAnsiSequence(rendered, ref i, ref ansi, trackStyle: true);
                 var isActive = ansi.HasActiveStyle;
+
+                if (preserveOsc8)
+                {
+                    continue;
+                }
 
                 if (wasActive && isActive && (ansi.LastSequenceReset || ansi.LastSequenceChangedStyle))
                 {
@@ -425,6 +468,63 @@ internal static class MessageFormatter
         }
 
         return rewritten;
+    }
+
+    private static bool IsOsc8Sequence(string rendered, int start) =>
+        TryReadAnsiStringControl(rendered, start, out var payloadStart, out var payloadEnd, out _) &&
+        rendered.AsSpan(payloadStart, payloadEnd - payloadStart).StartsWith("8;", StringComparison.Ordinal);
+
+    private static bool TryReadAnsiStringControl(string text, int start, out int payloadStart, out int payloadEnd, out int sequenceEnd)
+    {
+        payloadStart = payloadEnd = sequenceEnd = start;
+        var belTerminates = false;
+
+        if (text[start] == AnsiSanitizer.EscapeChar)
+        {
+            if (start + 1 >= text.Length)
+            {
+                return false;
+            }
+
+            belTerminates = text[start + 1] == ']';
+            if (!belTerminates && text[start + 1] is not ('P' or 'X' or '^' or '_'))
+            {
+                return false;
+            }
+            payloadStart = start + 2;
+            if (belTerminates && payloadStart < text.Length && text[payloadStart] == ']')
+            {
+                payloadStart++;
+            }
+        }
+        else
+        {
+            belTerminates = text[start] == '\x9d';
+            if (!belTerminates && text[start] is not ('\x90' or '\x98' or '\x9e' or '\x9f'))
+            {
+                return false;
+            }
+            payloadStart = start + 1;
+        }
+
+        for (var i = payloadStart; i < text.Length; i++)
+        {
+            if (text[i] == '\x9c' || (belTerminates && text[i] == '\x07'))
+            {
+                payloadEnd = i;
+                sequenceEnd = i + 1;
+                return true;
+            }
+            if (text[i] == AnsiSanitizer.EscapeChar)
+            {
+                payloadEnd = i;
+                sequenceEnd = i + 1 < text.Length && text[i + 1] == '\\' ? i + 2 : i;
+                return true;
+            }
+        }
+
+        payloadEnd = sequenceEnd = text.Length;
+        return true;
     }
 
     private static void RewriteAnsiSpan(List<int>? sequences, bool intersectsMask, string? resetReplacement, Dictionary<int, string> rewritten)

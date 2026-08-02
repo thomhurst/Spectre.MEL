@@ -7,6 +7,7 @@ namespace MEL.Spectre.Masking;
 internal sealed class SecretMasker
 {
     private const string MaskedToken = "***";
+    private static readonly TimeSpan DefaultRegexTimeout = TimeSpan.FromMilliseconds(100);
 
     private readonly Regex[] _namePatterns;
     private readonly Regex[] _valuePatterns;
@@ -19,13 +20,14 @@ internal sealed class SecretMasker
     {
     }
 
-    public SecretMasker(IEnumerable<string> namePatterns, IEnumerable<string> valuePatterns, int valueCacheCapacity)
+    public SecretMasker(IEnumerable<string> namePatterns, IEnumerable<string> valuePatterns, int valueCacheCapacity, TimeSpan? regexTimeout = null)
     {
+        var timeout = regexTimeout ?? DefaultRegexTimeout;
         _namePatterns = namePatterns
-            .Select(p => new Regex(p, RegexOptions.IgnoreCase | RegexOptions.Compiled))
+            .Select(p => new Regex(p, RegexOptions.IgnoreCase | RegexOptions.Compiled, timeout))
             .ToArray();
         _valuePatterns = valuePatterns
-            .Select(p => new Regex(p, RegexOptions.IgnoreCase | RegexOptions.Compiled))
+            .Select(p => new Regex(p, RegexOptions.IgnoreCase | RegexOptions.Compiled, timeout))
             .ToArray();
         _capacity = Math.Max(0, valueCacheCapacity);
     }
@@ -38,7 +40,7 @@ internal sealed class SecretMasker
     {
         for (var i = 0; i < _valuePatterns.Length; i++)
         {
-            if (_valuePatterns[i].IsMatch(value))
+            if (IsMatch(_valuePatterns[i], value))
             {
                 return true;
             }
@@ -140,10 +142,17 @@ internal sealed class SecretMasker
         var ranges = new List<MaskRange>();
         for (var patternIndex = 0; patternIndex < _valuePatterns.Length; patternIndex++)
         {
-            foreach (Match match in _valuePatterns[patternIndex].Matches(value))
+            try
             {
-                ranges.Add(new MaskRange(match.Index, match.Index + match.Length));
-                matchedValues?.Add(match.Value);
+                foreach (Match match in _valuePatterns[patternIndex].Matches(value))
+                {
+                    ranges.Add(new MaskRange(match.Index, match.Index + match.Length));
+                    matchedValues?.Add(match.Value);
+                }
+            }
+            catch (RegexMatchTimeoutException)
+            {
+                // A user-supplied pattern must not stall the single rendering consumer.
             }
         }
 
@@ -182,12 +191,24 @@ internal sealed class SecretMasker
     {
         for (var i = 0; i < _namePatterns.Length; i++)
         {
-            if (_namePatterns[i].IsMatch(name))
+            if (IsMatch(_namePatterns[i], name))
             {
                 return true;
             }
         }
         return false;
+    }
+
+    private static bool IsMatch(Regex pattern, string value)
+    {
+        try
+        {
+            return pattern.IsMatch(value);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return false;
+        }
     }
 
     public static string Mask(object? value)
