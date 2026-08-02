@@ -75,3 +75,13 @@ jobs:
         run: |
           git tag "v${{ steps.gitversion.outputs.semVer }}"
           git push origin "v${{ steps.gitversion.outputs.semVer }}"
+
+      - name: Create GitHub release
+        if: ${{ inputs.push }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "v${{ steps.gitversion.outputs.semVer }}"
+          --verify-tag
+          --title "v${{ steps.gitversion.outputs.semVer }}"
+          --generate-notes
