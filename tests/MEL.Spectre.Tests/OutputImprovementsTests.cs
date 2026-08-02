@@ -357,6 +357,20 @@ public class OutputImprovementsTests
     }
 
     [Test]
+    public async Task Cursor_movement_redacts_exception()
+    {
+        var secret = $"ghp_{new string('a', 36)}";
+        var overwriteMessage = secret.Insert(20, "X\x1b[1D");
+        var output = await LogTestHarness.CaptureAsync(CiMode.Off, logger =>
+        {
+            logger.LogError(new InvalidOperationException(overwriteMessage), "operation failed");
+        }, o => o.Template = "{Message}");
+
+        await Assert.That(output).Contains("***");
+        await Assert.That(output).DoesNotContain("ghp_");
+    }
+
+    [Test]
     public async Task Rendered_exception_pattern_masks_ANSI_interleaved_secret()
     {
         var secret = $"ghp_{new string('a', 36)}";

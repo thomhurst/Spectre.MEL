@@ -177,7 +177,7 @@ internal abstract class CiRendererBase : ICiRenderer
         }
 
         var exceptions = EnumerateExceptions(exception).ToArray();
-        if (exceptions.Any(current => ContainsBareCarriageReturn(current.Message)))
+        if (exceptions.Any(current => ContainsBareCarriageReturn(current.Message) || ContainsNonSgrAnsi(current.Message)))
         {
             var redactedException = SecretMasker.Mask(exception);
             return RuntimeFeature.IsDynamicCodeSupported
@@ -237,6 +237,50 @@ internal abstract class CiRendererBase : ICiRenderer
             {
                 return true;
             }
+        }
+        return false;
+    }
+
+    private static bool ContainsNonSgrAnsi(string value)
+    {
+        for (var i = 0; i < value.Length; i++)
+        {
+            if (!AnsiSanitizer.IsSequenceIntroducer(value[i]))
+            {
+                continue;
+            }
+
+            var sequenceIndex = i;
+            if (value[i] == AnsiSanitizer.EscapeChar)
+            {
+                if (++sequenceIndex >= value.Length || value[sequenceIndex] != '[')
+                {
+                    return true;
+                }
+                sequenceIndex++;
+            }
+            else if (value[i] == AnsiSanitizer.CsiChar)
+            {
+                sequenceIndex++;
+            }
+            else
+            {
+                return true;
+            }
+
+            while (sequenceIndex < value.Length && value[sequenceIndex] is >= '\x30' and <= '\x3f')
+            {
+                sequenceIndex++;
+            }
+            while (sequenceIndex < value.Length && value[sequenceIndex] is >= '\x20' and <= '\x2f')
+            {
+                sequenceIndex++;
+            }
+            if (sequenceIndex >= value.Length || value[sequenceIndex] != 'm')
+            {
+                return true;
+            }
+            i = sequenceIndex;
         }
         return false;
     }
