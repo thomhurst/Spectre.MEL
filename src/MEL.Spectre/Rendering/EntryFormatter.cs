@@ -26,6 +26,8 @@ internal sealed class EntryFormatter
     private readonly bool _allowMarkupInTemplate;
     private readonly EmbeddedAnsiMode _embeddedAnsi;
 
+    public bool AllowsMessageMarkup => _allowMarkupInTemplate;
+
     public EntryFormatter(OutputTemplate template, SpectreTheme theme, SecretMasker masker, bool allowMarkupInTemplate = false, LogLevel minimumInlineLevel = LogLevel.Trace, EmbeddedAnsiMode embeddedAnsi = EmbeddedAnsiMode.Convert)
     {
         _template = template;
