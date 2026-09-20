@@ -1,6 +1,6 @@
 # Spectre.MEL
 
-Read [CLAUDE.md](../../../../CLAUDE.md) for architecture, test commands, and configure-once invariants.
+Read [AGENTS.md](../../../../AGENTS.md) for architecture, test commands, and configure-once invariants.
 
 - Every local .NET command uses `scripts/Invoke-AgentDotNet.ps1`. Invoke it in-process in PowerShell (`& scripts/Invoke-AgentDotNet.ps1 -DotNetArguments @('build')`) so array arguments bind correctly. Allow the outer timeout at least 30 seconds beyond the guard. Exit 124/137 means a validation limit; report it and defer to CI rather than raising limits.
 - Tests use TUnit executable projects, not VSTest. Guarded `dotnet build` also enforces lint/analyzers.
