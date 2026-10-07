@@ -48,3 +48,7 @@ Everything in `src/MEL.Spectre` is `internal` except the public options/extensio
 ## Tests
 
 TUnit + TUnit.Assertions + Verify.TUnit, with `Spectre.Console.Testing`'s `TestConsole` for output capture. The standard pattern is `LogTestHarness.CaptureAsync(ciMode, logger => ...)`: it builds a real DI logging stack against a `TestConsole` (Monochrome theme, very wide profile to avoid wrapping), disposes the service provider to drain the background writer, and returns the console output for assertion. CI detection tests use the `CiDetector.DetectFromEnvironment(IDictionary)` overload rather than mutating real env vars.
+
+## Pull request reviews
+
+- Resolve each PR review thread, whether a human or a bot opened it, as soon as you have dispositioned it: the fix is pushed to the PR head and your reply names the commit, or your reply pushes back on the finding with evidence. Leave a thread open only while it has no disposition. If the reviewer replies after your disposition, unresolve the thread and handle the reply.
