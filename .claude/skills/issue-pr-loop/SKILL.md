@@ -128,7 +128,7 @@ Use current repository rules/instructions for approval requirements. Historical 
 pwsh scripts/Merge-Pr.ps1 -Pr <N> -Worktree $worktree
 ```
 
-Omit `-Worktree` only when none exists. The wrapper calls `Assert-PrGreen.ps1`, merges on a passing mechanical gate, and cleans up. Judge review dispositions and approval yourself; the script is necessary but insufficient.
+Run it from a command whose `workdir` is the shared checkout, never the worktree: on Windows a shell whose current directory is inside the worktree blocks its deletion, and the sweep must retry it later. Never `git worktree lock` a checkout to keep it; commit and push work you need. Omit `-Worktree` only when none exists. The wrapper calls `Assert-PrGreen.ps1`, merges on a passing mechanical gate, and cleans up. Judge review dispositions and approval yourself; the script is necessary but insufficient.
 
 Never bypass with direct `gh pr merge` or `--auto`. Nonzero exit means inspect/defer, not retry blindly. Cleanup warnings after a successful merge do not justify retrying; reconcile ambiguous results with GitHub state. Never delete fork branches through the base repository's `origin`.
 
