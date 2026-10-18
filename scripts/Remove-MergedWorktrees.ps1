@@ -113,6 +113,7 @@ function Remove-OrphanedDirectory {
         return $false
     }
 
+    if (-not (Remove-WorktreeDirectoryLinks -Worktree $Path -Label '(orphaned)')) { return $false }
     Remove-Item -LiteralPath ('\\?\' + ($Path -replace '/', '\')) -Recurse -Force -ErrorAction SilentlyContinue
     if (Test-Path -LiteralPath $Path) {
         Write-Host "sweep: WARNING could not fully remove orphaned dir $Path"

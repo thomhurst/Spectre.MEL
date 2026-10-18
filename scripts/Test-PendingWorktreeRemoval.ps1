@@ -67,10 +67,22 @@ try {
             'busy-reused' { Assert (Test-Path (Join-Path $path 'source.txt')) 'Pending removal deleted a new checkout at the same path.' }
         }
     }
+
+    # Git follows a junction while deleting a worktree and empties its target.
+    $outside = Join-Path $testRoot 'outside-store'
+    New-Item -ItemType Directory -Path $outside | Out-Null
+    Set-Content (Join-Path $outside 'keep.txt') 'outside the worktree'
+    $linked = Join-Path $testRoot 'linked'
+    Invoke-TestGit -C $repo worktree add -b linked $linked HEAD
+    New-Item -ItemType Directory (Join-Path $linked 'node_modules') | Out-Null
+    New-Item -ItemType Junction -Path (Join-Path $linked 'node_modules/pkg') -Target $outside | Out-Null
+    Remove-MergedWorktree -Repo $repo -Worktree $linked -Label '#linked'
+    Assert (Test-Path (Join-Path $outside 'keep.txt')) 'Worktree removal deleted files through a junction.'
+    Assert (-not (Test-Path $linked)) 'Worktree containing a junction was not removed.'
 }
 finally {
     Set-Location ([IO.Path]::GetTempPath())
     Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-Write-Output 'OK pending worktree removal: busy directory retried, new work preserved, reused path kept.'
+Write-Output 'OK pending worktree removal: busy directory retried, new work preserved, reused path kept, junction target kept.'
