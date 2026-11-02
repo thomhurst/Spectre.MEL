@@ -1,3 +1,4 @@
+#!/usr/bin/env pwsh
 # Local regression suite for pending worktree removals: requires Git and PowerShell 7.
 # A process whose current directory is inside a worktree blocks deleting it on Windows.
 $ErrorActionPreference = 'Stop'

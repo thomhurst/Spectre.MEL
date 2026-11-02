@@ -1,3 +1,4 @@
+#!/usr/bin/env pwsh
 # Regression tests for the agent evidence sweep in WorktreeCleanup.ps1. No Docker needed.
 
 $ErrorActionPreference = 'Stop'
